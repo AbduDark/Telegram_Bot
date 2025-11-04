@@ -31,6 +31,10 @@ localPort = 8289
 externalPort = 4200
 
 [[ports]]
+localPort = 43181
+externalPort = 3003
+
+[[ports]]
 localPort = 50052
 externalPort = 3002
 
@@ -63,7 +67,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npx mastra dev"
+args = "npm run dev"
 waitForPort = 5000
 
 [[workflows.workflow]]

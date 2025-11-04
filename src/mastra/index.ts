@@ -126,7 +126,7 @@ export const mastra = new Mastra({
             logger?.info("📝 [Telegram] Received webhook payload", payload);
             
             // Get the workflow
-            const workflow = mastra.getWorkflow("telegram-phone-lookup");
+            const workflow = mastra.getWorkflow("telegramBotWorkflow");
             if (!workflow) {
               logger?.error("❌ [Telegram] Workflow not found");
               return c.text("Workflow not found", 500);
