@@ -47,12 +47,9 @@ const processTelegramMessage = createStep({
     // Use the agent to process the message
     logger?.info('🤖 [TelegramBotWorkflow] Calling agent to process phone number');
     
-    const agentResponse = await telegramBotAgent.generateLegacy([
-      { 
-        role: "user", 
-        content: `ابحث عن هذا الرقم: ${inputData.message}` 
-      },
-    ]);
+    const agentResponse = await telegramBotAgent.generate(
+      `ابحث عن هذا الرقم: ${inputData.message}`
+    );
     
     logger?.info('✅ [TelegramBotWorkflow] Agent response generated', { 
       responseLength: agentResponse.text.length 
