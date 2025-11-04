@@ -9,8 +9,9 @@ import { z } from "zod";
 
 import { sharedPostgresStorage } from "./storage";
 import { inngest, inngestServe } from "./inngest";
-import { exampleWorkflow } from "./workflows/exampleWorkflow";
-import { exampleAgent } from "./agents/exampleAgent";
+import { telegramBotWorkflow } from "./workflows/telegramBotWorkflow";
+import { telegramBotAgent } from "./agents/telegramBotAgent";
+import "../triggers/telegramTriggers";
 
 class ProductionPinoLogger extends MastraLogger {
   protected logger: pino.Logger;
@@ -56,9 +57,9 @@ class ProductionPinoLogger extends MastraLogger {
 export const mastra = new Mastra({
   storage: sharedPostgresStorage,
   // Register your workflows here
-  workflows: {},
+  workflows: { telegramBotWorkflow },
   // Register your agents here
-  agents: {},
+  agents: { telegramBotAgent },
   mcpServers: {
     allTools: new MCPServer({
       name: "allTools",
@@ -112,6 +113,72 @@ export const mastra = new Mastra({
       },
     ],
     apiRoutes: [
+      // Telegram webhook handler
+      {
+        path: "/webhooks/telegram/action",
+        method: "POST",
+        handler: async (c) => {
+          const mastra = c.get("mastra");
+          const logger = mastra.getLogger();
+          
+          try {
+            const payload = await c.req.json();
+            logger?.info("📝 [Telegram] Received webhook payload", payload);
+            
+            // Get the workflow
+            const workflow = mastra.getWorkflow("telegram-phone-lookup");
+            if (!workflow) {
+              logger?.error("❌ [Telegram] Workflow not found");
+              return c.text("Workflow not found", 500);
+            }
+            
+            // Extract data from payload
+            const userName = payload.message?.from?.username || "مستخدم";
+            const message = payload.message?.text || "";
+            const chatId = payload.message?.chat?.id;
+            
+            logger?.info("🚀 [Telegram] Starting workflow execution", { userName, message, chatId });
+            
+            // Execute workflow
+            const run = await workflow.createRunAsync();
+            const result = await run.start({
+              inputData: {
+                userName,
+                message,
+                chatId,
+              },
+            });
+            
+            logger?.info("✅ [Telegram] Workflow completed", { status: result.status });
+            
+            // Send response back to Telegram
+            if (result.result?.formattedResponse && chatId) {
+              logger?.info("📤 [Telegram] Sending response");
+              
+              const token = process.env.TELEGRAM_BOT_TOKEN;
+              if (token) {
+                try {
+                  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      chat_id: chatId,
+                      text: result.result.formattedResponse,
+                    }),
+                  });
+                } catch (error) {
+                  logger?.error("❌ [Telegram] Failed to send message", error);
+                }
+              }
+            }
+            
+            return c.text("OK", 200);
+          } catch (error) {
+            logger?.error("❌ [Telegram] Error handling webhook", error);
+            return c.text("Internal Server Error", 500);
+          }
+        },
+      },
       // This API route is used to register the Mastra workflow (inngest function) on the inngest server
       {
         path: "/api/inngest",

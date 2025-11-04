@@ -2,6 +2,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 import { registerApiRoute } from "../mastra/inngest";
 import { Mastra } from "@mastra/core";
+import { mastra } from "../mastra";
 
 if (!process.env.TELEGRAM_BOT_TOKEN) {
   console.warn(
@@ -56,4 +57,85 @@ export function registerTelegramTrigger({
       },
     }),
   ];
+}
+
+// Register the Telegram trigger to execute the phone lookup workflow
+registerTelegramTrigger({
+  triggerType: "telegram/message",
+  handler: async (mastra, triggerInfo) => {
+    const logger = mastra.getLogger();
+    logger?.info("📨 [Telegram Trigger] Received message from user", {
+      userName: triggerInfo.params.userName,
+      message: triggerInfo.params.message,
+    });
+
+    // Get the workflow
+    const workflow = mastra.getWorkflow("telegram-phone-lookup");
+    if (!workflow) {
+      logger?.error("❌ [Telegram Trigger] Workflow 'telegram-phone-lookup' not found");
+      return;
+    }
+
+    try {
+      // Extract chat ID from payload
+      const chatId = triggerInfo.payload?.message?.chat?.id;
+      
+      // Create a workflow run
+      logger?.info("🚀 [Telegram Trigger] Starting workflow execution");
+      const run = await workflow.createRunAsync();
+      
+      // Start the workflow with input data
+      const result = await run.start({
+        inputData: {
+          userName: triggerInfo.params.userName || "مستخدم",
+          message: triggerInfo.params.message,
+          chatId: chatId,
+        },
+      });
+
+      logger?.info("✅ [Telegram Trigger] Workflow completed successfully", {
+        status: result.status,
+      });
+
+      // Send the response back to Telegram
+      if (result.result?.formattedResponse) {
+        logger?.info("📤 [Telegram Trigger] Sending response to Telegram");
+        await sendTelegramMessage(chatId, result.result.formattedResponse);
+      }
+    } catch (error) {
+      logger?.error("❌ [Telegram Trigger] Error executing workflow:", error);
+    }
+  },
+});
+
+// Helper function to send messages back to Telegram
+async function sendTelegramMessage(chatId: number, text: string) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) {
+    console.error("TELEGRAM_BOT_TOKEN not found");
+    return;
+  }
+
+  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+  
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: text,
+        parse_mode: "HTML",
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error("Failed to send Telegram message:", error);
+    }
+  } catch (error) {
+    console.error("Error sending Telegram message:", error);
+  }
 }
