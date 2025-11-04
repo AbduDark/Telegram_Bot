@@ -60,7 +60,7 @@ function phoneVariants(p: string): Set<string> {
 export const phoneLookupTool = createTool({
   id: "phone-lookup",
   
-  description: "Search for phone numbers in facebook_accounts and contacts databases. Returns all matching records from both tables.",
+  description: "Search for phone numbers in facebook and contacts databases. Returns all matching records from both tables.",
   
   inputSchema: z.object({
     phone: z.string().describe("Phone number to search for (supports various formats: +20, 00, 0, etc.)"),
@@ -72,12 +72,11 @@ export const phoneLookupTool = createTool({
       facebook_id: z.string().nullable(),
       phone: z.string().nullable(),
       name: z.string().nullable(),
-      link_facebook: z.string().nullable(),
-      email_facebook: z.string().nullable(),
-      account_name: z.string().nullable(),
+      facebook_url: z.string().nullable(),
+      email: z.string().nullable(),
       location: z.string().nullable(),
       job: z.string().nullable(),
-      sex: z.string().nullable(),
+      gender: z.string().nullable(),
     })),
     contacts: z.array(z.object({
       id: z.number(),
@@ -112,9 +111,9 @@ export const phoneLookupTool = createTool({
       const variantsArray = Array.from(variants);
       const placeholders = Array.from(variants).map((_, i) => `$${i + 1}`).join(', ');
       
-      // Search in facebook_accounts
-      const fbQuery = `SELECT * FROM facebook_accounts WHERE phone IN (${placeholders})`;
-      logger?.info('🔍 [PhoneLookupTool] Querying facebook_accounts table');
+      // Search in facebook
+      const fbQuery = `SELECT * FROM facebook WHERE phone IN (${placeholders})`;
+      logger?.info('🔍 [PhoneLookupTool] Querying facebook table');
       const fbResult = await client.query(fbQuery, variantsArray);
       
       // Search in contacts (check both phone and phone2)
