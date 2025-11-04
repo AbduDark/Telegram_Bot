@@ -1,0 +1,169 @@
+# file: tg_phone_lookup_bot.py
+import os
+import re
+import sqlite3
+import asyncio
+from aiogram import Bot, Dispatcher, types
+from aiogram.utils import executor
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # ضع توكن البوت هنا أو كـ env var
+if not BOT_TOKEN:
+    raise RuntimeError("Set BOT_TOKEN environment variable")
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher(bot)
+
+DB_PATH = "phones.db"
+
+# ---------- utils ----------
+def normalize_phone(s):
+    if not s:
+        return ''
+    s = s.strip()
+    s = re.sub(r'[^\d+]', '', s)
+    if s.startswith('+'):
+        return s
+    if s.startswith('00'):
+        return '+' + s[2:]
+    return s
+
+def phone_variants(p):
+    """Return common variants to search for (exact + without + and leading 0)"""
+    p = normalize_phone(p)
+    variants = set()
+    if not p:
+        return variants
+    variants.add(p)
+    if p.startswith('+'):
+        variants.add(p[1:])            # without plus
+        # maybe with leading 0 for local representation (heuristic)
+        if len(p) > 3:
+            local = '0' + p[-10:]      # last 10 digits preceded by 0 (heuristic)
+            variants.add(local)
+    else:
+        variants.add('+' + p)
+        if p.startswith('0'):
+            variants.add(p[1:])
+    return variants
+
+# ---------- DB helpers ----------
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.executescript("""
+    CREATE TABLE IF NOT EXISTS facebook_accounts (
+      Id INTEGER PRIMARY KEY,
+      facebook_id TEXT,
+      phone TEXT,
+      name TEXT,
+      link_facebook TEXT,
+      email_facebook TEXT,
+      account_name TEXT,
+      location TEXT,
+      job TEXT,
+      sex TEXT
+    );
+    CREATE TABLE IF NOT EXISTS contacts (
+      id INTEGER PRIMARY KEY,
+      name TEXT,
+      address TEXT,
+      phone TEXT,
+      phone2 TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_facebook_phone ON facebook_accounts(phone);
+    CREATE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone);
+    CREATE INDEX IF NOT EXISTS idx_contacts_phone2 ON contacts(phone2);
+    """)
+    conn.commit()
+    conn.close()
+
+def search_phone_all(phone):
+    """Return rows from both tables matching phone variants"""
+    variants = phone_variants(phone)
+    if not variants:
+        return {"facebook": [], "contacts": []}
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Build placeholders and params
+    placeholders = ','.join('?' for _ in variants)
+    params = list(variants)
+
+    # Search in facebook_accounts.phone
+    q1 = f"SELECT * FROM facebook_accounts WHERE phone IN ({placeholders})"
+    cur.execute(q1, params)
+    fb_rows = [dict(row) for row in cur.fetchall()]
+
+    # Search in contacts.phone OR contacts.phone2
+    q2 = f"SELECT * FROM contacts WHERE phone IN ({placeholders}) OR phone2 IN ({placeholders})"
+    # params repeated for second IN clause
+    cur.execute(q2, params + params)
+    contact_rows = [dict(row) for row in cur.fetchall()]
+
+    conn.close()
+    return {"facebook": fb_rows, "contacts": contact_rows}
+
+# ---------- Telegram handlers ----------
+@dp.message_handler(commands=['start','help'])
+async def start(msg: types.Message):
+    await msg.answer("السلام عليكم 👋\nابعتهالي رقم موبايل وهاعمل بحث في القاعدتين عن كل اللي مرتبط بالرقم.\nمثال: +201234567890 أو 01234567890")
+
+@dp.message_handler()
+async def handle_message(msg: types.Message):
+    text = msg.text.strip()
+    # quick validation: keep digits and + only (allow spaces)
+    if not re.search(r'\d', text):
+        await msg.answer("من فضلك ابعت رقم موبايل صحيح.")
+        return
+
+    await msg.chat.do('typing')
+    results = search_phone_all(text)
+
+    out_lines = []
+    # facebook results
+    if results["facebook"]:
+        out_lines.append("🔎 النتائج في جدول Facebook / accounts:")
+        for r in results["facebook"]:
+            out_lines.append(f"Id: {r.get('Id')}")
+            out_lines.append(f"Name: {r.get('name')}")
+            out_lines.append(f"Phone: {r.get('phone')}")
+            out_lines.append(f"Facebook id: {r.get('facebook_id')}")
+            out_lines.append(f"Link: {r.get('link_facebook')}")
+            out_lines.append(f"Email: {r.get('email_facebook')}")
+            out_lines.append(f"Account name: {r.get('account_name')}")
+            out_lines.append(f"Location: {r.get('location')}")
+            out_lines.append(f"Job: {r.get('job')}")
+            out_lines.append(f"Sex: {r.get('sex')}")
+            out_lines.append("—")
+    else:
+        out_lines.append("🔎 مفيش نتائج في جدول Facebook.")
+
+    # contacts results
+    if results["contacts"]:
+        out_lines.append("\n📇 النتائج في جدول Contacts:")
+        for r in results["contacts"]:
+            out_lines.append(f"id: {r.get('id')}")
+            out_lines.append(f"name: {r.get('name')}")
+            out_lines.append(f"address: {r.get('address')}")
+            out_lines.append(f"phone: {r.get('phone')}")
+            out_lines.append(f"phone2: {r.get('phone2')}")
+            out_lines.append("—")
+    else:
+        out_lines.append("\n📇 مفيش نتائج في جدول Contacts.")
+
+    message_text = "\n".join(out_lines)
+    # إذا طول الرسالة كبير، ابعت كملف نصي
+    if len(message_text) > 4000:
+        await msg.answer_document(types.InputFile.from_buffer(message_text.encode('utf-8'), filename="results.txt"))
+    else:
+        await msg.answer(message_text)
+
+if __name__ == "__main__":
+    init_db()
+    print("Bot started...")
+    executor.start_polling(dp, skip_updates=True)
