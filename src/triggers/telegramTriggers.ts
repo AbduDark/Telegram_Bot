@@ -98,9 +98,9 @@ registerTelegramTrigger({
       });
 
       // Send the response back to Telegram
-      if (result.status === "success" && result.output?.formattedResponse) {
+      if (result.status === "success" && result.result?.formattedResponse) {
         logger?.info("📤 [Telegram Trigger] Sending response to Telegram");
-        await sendTelegramMessage(chatId, result.output.formattedResponse);
+        await sendTelegramMessage(chatId, result.result.formattedResponse);
       }
     } catch (error) {
       logger?.error("❌ [Telegram Trigger] Error executing workflow:", error);
