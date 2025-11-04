@@ -9,9 +9,7 @@ import { z } from "zod";
 
 import { sharedPostgresStorage } from "./storage";
 import { inngest, inngestServe } from "./inngest";
-import { telegramBotWorkflow } from "./workflows/telegramBotWorkflow";
 import { telegramBotAgent } from "./agents/telegramBotAgent";
-import "../triggers/telegramTriggers";
 
 class ProductionPinoLogger extends MastraLogger {
   protected logger: pino.Logger;
@@ -56,8 +54,6 @@ class ProductionPinoLogger extends MastraLogger {
 
 export const mastra = new Mastra({
   storage: sharedPostgresStorage,
-  // Register your workflows here
-  workflows: { telegramBotWorkflow },
   // Register your agents here
   agents: { telegramBotAgent },
   mcpServers: {
@@ -123,52 +119,62 @@ export const mastra = new Mastra({
           
           try {
             const payload = await c.req.json();
-            logger?.info("📝 [Telegram] Received webhook payload", payload);
-            
-            // Get the workflow
-            const workflow = mastra.getWorkflow("telegramBotWorkflow");
-            if (!workflow) {
-              logger?.error("❌ [Telegram] Workflow not found");
-              return c.text("Workflow not found", 500);
-            }
+            logger?.info("📝 [Telegram] Received webhook", { 
+              userName: payload.message?.from?.username,
+              message: payload.message?.text 
+            });
             
             // Extract data from payload
             const userName = payload.message?.from?.username || "مستخدم";
             const message = payload.message?.text || "";
             const chatId = payload.message?.chat?.id;
             
-            logger?.info("🚀 [Telegram] Starting workflow execution", { userName, message, chatId });
+            if (!chatId) {
+              logger?.warn("⚠️ [Telegram] No chat ID found");
+              return c.text("OK", 200);
+            }
             
-            // Execute workflow
-            const run = await workflow.createRunAsync();
-            const result = await run.start({
-              inputData: {
-                userName,
-                message,
-                chatId,
-              },
-            });
+            // Check if message contains digits
+            const hasDigits = /\d/.test(message);
+            let responseText = "";
             
-            logger?.info("✅ [Telegram] Workflow completed", { status: result.status });
-            
-            // Send response back to Telegram
-            if (result.result?.formattedResponse && chatId) {
-              logger?.info("📤 [Telegram] Sending response");
+            if (!hasDigits) {
+              responseText = "من فضلك ابعت رقم موبايل صحيح. 📱\n\nمثال: +201234567890 أو 01234567890";
+            } else {
+              // Use agent directly for faster response
+              logger?.info("🤖 [Telegram] Calling agent");
               
-              const token = process.env.TELEGRAM_BOT_TOKEN;
-              if (token) {
-                try {
-                  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      chat_id: chatId,
-                      text: result.result.formattedResponse,
-                    }),
-                  });
-                } catch (error) {
-                  logger?.error("❌ [Telegram] Failed to send message", error);
-                }
+              const agentResponse = await telegramBotAgent.generate(
+                `ابحث عن هذا الرقم: ${message}`
+              );
+              
+              const greeting = userName ? `مرحباً @${userName}! 👋\n\n` : '';
+              responseText = greeting + agentResponse.text;
+              
+              // Truncate if too long
+              if (responseText.length > 4000) {
+                responseText = responseText.substring(0, 3900) + 
+                  '\n\n... (الرسالة طويلة جداً، تم اختصارها)';
+              }
+            }
+            
+            // Send response to Telegram
+            logger?.info("📤 [Telegram] Sending response");
+            const token = process.env.TELEGRAM_BOT_TOKEN;
+            
+            if (token) {
+              try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chat_id: chatId,
+                    text: responseText,
+                  }),
+                });
+                logger?.info("✅ [Telegram] Response sent successfully");
+              } catch (error) {
+                logger?.error("❌ [Telegram] Failed to send message", error);
               }
             }
             
