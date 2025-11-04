@@ -1,6 +1,10 @@
-import { openai } from "@ai-sdk/openai";
+import { createGroq } from "@ai-sdk/groq";
 import { Agent } from "@mastra/core/agent";
 import { phoneLookupTool } from "../tools/phoneLookupTool";
+
+const groq = createGroq({
+  apiKey: process.env.GROQ_API_KEY,
+});
 
 /**
  * Telegram Bot Agent
@@ -55,7 +59,7 @@ export const telegramBotAgent = new Agent({
 - تذكّر أن تستخدم أداة phone-lookup دائماً عندما يرسل المستخدم رقم
 `,
 
-  model: openai("gpt-4o"),
+  model: groq("llama-3.3-70b-versatile"),
   
   tools: { phoneLookupTool },
   
