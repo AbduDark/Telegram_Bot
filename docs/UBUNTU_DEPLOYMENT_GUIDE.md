@@ -1,17 +1,18 @@
-# دليل تثبيت بوت Telegram على Ubuntu Server مع إعدادات الأمان العالية
+# دليل تثبيت بوت Telegram على Ubuntu Server مع MySQL
 
 ## جدول المحتويات
 1. [متطلبات النظام](#متطلبات-النظام)
 2. [إعداد السيرفر الأساسي](#إعداد-السيرفر-الأساسي)
 3. [تأمين السيرفر](#تأمين-السيرفر)
 4. [تثبيت Node.js](#تثبيت-nodejs)
-5. [تثبيت PostgreSQL](#تثبيت-postgresql)
+5. [تثبيت MySQL](#تثبيت-mysql)
 6. [تثبيت phpMyAdmin](#تثبيت-phpmyadmin)
 7. [نشر البوت](#نشر-البوت)
-8. [إعداد Nginx كـ Reverse Proxy](#إعداد-nginx)
-9. [تثبيت شهادة SSL](#تثبيت-شهادة-ssl)
-10. [إعداد PM2 لإدارة العمليات](#إعداد-pm2)
-11. [المراقبة والصيانة](#المراقبة-والصيانة)
+8. [إعداد Nginx](#إعداد-nginx)
+9. [تثبيت SSL](#تثبيت-ssl)
+10. [إعداد PM2](#إعداد-pm2)
+11. [تشغيل البوت](#تشغيل-البوت)
+12. [المراقبة والصيانة](#المراقبة-والصيانة)
 
 ---
 
@@ -27,7 +28,7 @@
 ### المتطلبات الإضافية
 - صلاحيات Root أو sudo
 - اتصال SSH للوصول للسيرفر
-- دومين (اختياري لكن موصى به)
+- دومين (اختياري لكن موصى به للـ SSL)
 
 ---
 
@@ -42,7 +43,7 @@ sudo apt autoremove -y
 sudo apt autoclean
 ```
 
-### 2. تعيين Timezone
+### 2. تعيين المنطقة الزمنية
 ```bash
 # تعيين المنطقة الزمنية (مثال: القاهرة)
 sudo timedatectl set-timezone Africa/Cairo
@@ -51,7 +52,7 @@ sudo timedatectl set-timezone Africa/Cairo
 timedatectl
 ```
 
-### 3. إنشاء مستخدم جديد (للأمان)
+### 3. إنشاء مستخدم جديد للأمان
 ```bash
 # لا تستخدم root مباشرة، أنشئ مستخدم جديد
 sudo adduser botadmin
@@ -77,7 +78,7 @@ sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup
 sudo nano /etc/ssh/sshd_config
 ```
 
-**التعديلات المطلوبة في ملف `sshd_config`:**
+**التعديلات المطلوبة:**
 ```
 # تغيير البورت الافتراضي (اختياري لكن موصى به)
 Port 2222
@@ -94,7 +95,7 @@ MaxAuthTries 3
 # منع كلمات المرور الفارغة
 PermitEmptyPasswords no
 
-# تفعيل المصادقة بالمفاتيح فقط (موصى به جداً)
+# تفعيل المصادقة بالمفاتيح فقط (موصى به)
 PubkeyAuthentication yes
 PasswordAuthentication no
 
@@ -110,7 +111,7 @@ AllowUsers botadmin
 sudo systemctl restart sshd
 ```
 
-### 2. إعداد SSH Keys (مصادقة آمنة)
+### 2. إعداد SSH Keys
 
 **على جهازك المحلي:**
 ```bash
@@ -152,7 +153,7 @@ sudo ufw enable
 sudo ufw status verbose
 ```
 
-### 4. تثبيت Fail2Ban (حماية من هجمات Brute Force)
+### 4. تثبيت Fail2Ban
 
 ```bash
 # تثبيت Fail2Ban
@@ -165,7 +166,7 @@ sudo cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
 sudo nano /etc/fail2ban/jail.local
 ```
 
-**إضافة/تعديل في `jail.local`:**
+**إضافة/تعديل:**
 ```ini
 [DEFAULT]
 # حظر لمدة ساعة
@@ -187,28 +188,15 @@ sudo systemctl restart fail2ban
 sudo systemctl enable fail2ban
 
 # التحقق من الحالة
-sudo fail2ban-client status
 sudo fail2ban-client status sshd
 ```
 
-### 5. تعطيل الخدمات غير الضرورية
-
-```bash
-# عرض الخدمات النشطة
-sudo systemctl list-units --type=service --state=running
-
-# تعطيل الخدمات غير المستخدمة (أمثلة)
-sudo systemctl disable bluetooth
-sudo systemctl stop bluetooth
-```
-
-### 6. تثبيت أدوات الأمان الإضافية
+### 5. تثبيت أدوات الأمان الإضافية
 
 ```bash
 # تثبيت rkhunter للكشف عن الـ rootkits
 sudo apt install rkhunter -y
 sudo rkhunter --update
-sudo rkhunter --check --skip-keypress
 
 # تثبيت ClamAV للحماية من الفيروسات
 sudo apt install clamav clamav-daemon -y
@@ -217,7 +205,7 @@ sudo systemctl start clamav-daemon
 sudo systemctl enable clamav-daemon
 ```
 
-### 7. إعداد Automatic Security Updates
+### 6. إعداد التحديثات التلقائية
 
 ```bash
 # تثبيت unattended-upgrades
@@ -225,31 +213,22 @@ sudo apt install unattended-upgrades -y
 
 # تفعيل التحديثات التلقائية
 sudo dpkg-reconfigure -plow unattended-upgrades
-
-# تعديل الإعدادات
-sudo nano /etc/apt/apt.conf.d/50unattended-upgrades
-```
-
-**في الملف، تأكد من تفعيل:**
-```
-Unattended-Upgrade::Automatic-Reboot "true";
-Unattended-Upgrade::Automatic-Reboot-Time "03:00";
 ```
 
 ---
 
 ## تثبيت Node.js
 
-### 1. تثبيت Node.js 20.x (الإصدار المطلوب - طريقة 2025 المحدثة)
+### 1. تثبيت Node.js 20.x
 
 ```bash
-# تحديث النظام أولاً
+# تحديث النظام
 sudo apt update && sudo apt upgrade -y
 
-# تثبيت المتطلبات الأساسية
+# تثبيت المتطلبات
 sudo apt install -y ca-certificates curl gnupg
 
-# إضافة مفتاح GPG الرسمي من NodeSource
+# إضافة مفتاح GPG من NodeSource
 sudo mkdir -p /etc/apt/keyrings
 curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
 
@@ -257,7 +236,7 @@ curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg 
 NODE_MAJOR=20
 echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
 
-# تحديث قائمة الحزم وتثبيت Node.js
+# تحديث وتثبيت Node.js
 sudo apt update
 sudo apt install -y nodejs
 
@@ -266,176 +245,149 @@ node --version  # يجب أن يكون >= v20.9.0
 npm --version
 ```
 
-**ملاحظة:** هذه الطريقة المحدثة لعام 2025 تستخدم GPG keyrings الأكثر أماناً بدلاً من apt-key القديم.
-
-### 2. تثبيت أدوات البناء الضرورية
+### 2. تثبيت أدوات البناء
 
 ```bash
 # تثبيت build tools
-sudo apt install build-essential -y
+sudo apt install -y build-essential
 
 # تثبيت Git
-sudo apt install git -y
+sudo apt install -y git
 git --version
 ```
 
 ---
 
-## تثبيت PostgreSQL
+## تثبيت MySQL
 
-### 1. تثبيت PostgreSQL 16 (أحدث إصدار مستقر - 2025)
+### 1. تثبيت MySQL Server 8.0
 
 ```bash
-# إضافة مستودع PostgreSQL الرسمي
-sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-
-# إضافة مفتاح التوقيع (طريقة 2025 المحدثة)
-wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/pgdg.asc
-
-# تحديث وتثبيت PostgreSQL 16
+# تحديث قائمة الحزم
 sudo apt update
-sudo apt install postgresql-16 postgresql-contrib-16 -y
+
+# تثبيت MySQL Server
+sudo apt install mysql-server -y
 
 # التحقق من الحالة
-sudo systemctl status postgresql
-sudo systemctl enable postgresql
+sudo systemctl status mysql
+sudo systemctl enable mysql
 ```
 
-**ملاحظة:** PostgreSQL 16 يتضمن تحسينات أمنية هامة خاصة في PUBLIC schema privileges.
-
-### 2. تأمين PostgreSQL (معايير 2025)
+### 2. تأمين MySQL
 
 ```bash
-# الدخول كمستخدم postgres
-sudo -u postgres psql
+# تشغيل سكريبت التأمين
+sudo mysql_secure_installation
+```
 
-# داخل PostgreSQL، قم بما يلي:
+**اتبع التعليمات:**
+```
+- Setup VALIDATE PASSWORD component? Y (نعم)
+- Password validation policy: 2 (قوي)
+- New password: أدخل كلمة مرور قوية جداً
+- Remove anonymous users? Y
+- Disallow root login remotely? Y
+- Remove test database? Y
+- Reload privilege tables? Y
+```
+
+### 3. إنشاء قاعدة البيانات والمستخدم
+
+```bash
+# الدخول إلى MySQL
+sudo mysql
 ```
 
 ```sql
--- تغيير كلمة مرور postgres بتشفير
-ALTER USER postgres WITH ENCRYPTED PASSWORD 'كلمة_مرور_قوية_جداً';
-
 -- إنشاء قاعدة بيانات للبوت
-CREATE DATABASE telegram_bot_db;
+CREATE DATABASE telegram_bot_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- إنشاء مستخدم خاص بالبوت (بدون صلاحيات SUPERUSER)
-CREATE USER bot_user WITH ENCRYPTED PASSWORD 'كلمة_مرور_قوية_أخرى';
+-- إنشاء مستخدم خاص بالبوت
+CREATE USER 'bot_user'@'localhost' IDENTIFIED BY 'كلمة_مرور_قوية_جداً';
 
--- منع الوصول العام للقاعدة (مهم للأمان)
-REVOKE ALL ON DATABASE telegram_bot_db FROM PUBLIC;
+-- منح الصلاحيات الكاملة على القاعدة
+GRANT ALL PRIVILEGES ON telegram_bot_db.* TO 'bot_user'@'localhost';
 
--- منح الصلاحيات للمستخدم المحدد فقط
-GRANT CONNECT ON DATABASE telegram_bot_db TO bot_user;
-GRANT ALL PRIVILEGES ON DATABASE telegram_bot_db TO bot_user;
+-- تطبيق التغييرات
+FLUSH PRIVILEGES;
 
--- الاتصال بالقاعدة لإعداد صلاحيات Schema
-\c telegram_bot_db
-
--- إلغاء صلاحيات PUBLIC schema (تحسين أمان PostgreSQL 15+)
-REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON SCHEMA public FROM PUBLIC;
-
--- منح الصلاحيات الكاملة على Schema للمستخدم
-GRANT ALL ON SCHEMA public TO bot_user;
+-- عرض المستخدمين
+SELECT user, host FROM mysql.user;
 
 -- الخروج
-\q
+EXIT;
 ```
 
-### 3. تكوين PostgreSQL للاتصالات المحلية (معايير أمان 2025)
+### 4. تكوين MySQL للأمان
 
 ```bash
-# تعديل ملف pg_hba.conf
-sudo nano /etc/postgresql/16/main/pg_hba.conf
-```
-
-**التكوين الآمن (استبدل كل المحتوى بهذا):**
-```
-# TYPE  DATABASE        USER            ADDRESS                 METHOD
-
-# المستخدم postgres - اتصال محلي فقط بـ peer
-local   all             postgres                                peer
-
-# المستخدم bot_user - اتصال محلي مع كلمة مرور
-local   telegram_bot_db bot_user                                scram-sha-256
-host    telegram_bot_db bot_user        127.0.0.1/32            scram-sha-256
-host    telegram_bot_db bot_user        ::1/128                 scram-sha-256
-
-# ⚠️ لا تستخدم أبداً في الإنتاج:
-# host  all             all             0.0.0.0/0               trust     ❌ خطر!
-# host  all             all             0.0.0.0/0               md5       ❌ ضعيف!
-
-# استخدم scram-sha-256 دائماً (الأقوى في 2025)
-```
-
-**ملاحظات مهمة:**
-- `scram-sha-256`: أقوى طريقة مصادقة (أفضل من md5)
-- `peer`: يستخدم اسم مستخدم النظام (للاتصالات المحلية)
-- `trust`: **خطير جداً** - يسمح بالدخول بدون كلمة مرور
-
-```bash
-# تعديل postgresql.conf للأمان
-sudo nano /etc/postgresql/16/main/postgresql.conf
+# تعديل ملف الإعداد
+sudo nano /etc/mysql/mysql.conf.d/mysqld.cnf
 ```
 
 **التعديلات الموصى بها:**
-```
-# الاستماع على localhost فقط (للأمان)
-listen_addresses = 'localhost'
+```ini
+[mysqld]
+# الاستماع على localhost فقط
+bind-address = 127.0.0.1
 
-# زيادة الاتصالات المتزامنة إذا لزم الأمر
-max_connections = 100
+# تعطيل LOCAL INFILE (أمان)
+local-infile = 0
+
+# تحديد حجم الحزم
+max_allowed_packet = 64M
 
 # تحسين الأداء
-shared_buffers = 256MB
-effective_cache_size = 1GB
+innodb_buffer_pool_size = 256M
+innodb_log_file_size = 64M
+
+# Character set
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
 ```
 
 ```bash
-# إعادة تشغيل PostgreSQL
-sudo systemctl restart postgresql
+# إعادة تشغيل MySQL
+sudo systemctl restart mysql
 ```
 
-### 4. إنشاء الجداول المطلوبة
+### 5. إنشاء الجداول المطلوبة
 
 ```bash
 # الاتصال بقاعدة البيانات
-sudo -u postgres psql -d telegram_bot_db
+mysql -u bot_user -p telegram_bot_db
 ```
 
 ```sql
 -- إنشاء جدول facebook_accounts
 CREATE TABLE facebook_accounts (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255),
     phone VARCHAR(50),
     email VARCHAR(255),
     location VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_phone (phone)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- إنشاء جدول contacts
 CREATE TABLE contacts (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255),
     phone VARCHAR(50),
     email VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_phone (phone)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- إنشاء فهارس لتسريع البحث
-CREATE INDEX idx_facebook_phone ON facebook_accounts(phone);
-CREATE INDEX idx_contacts_phone ON contacts(phone);
-
--- منح الصلاحيات للمستخدم
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO bot_user;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bot_user;
+-- عرض الجداول
+SHOW TABLES;
 
 -- الخروج
-\q
+EXIT;
 ```
 
 ---
@@ -449,87 +401,25 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bot_user;
 sudo apt install apache2 -y
 
 # تثبيت PHP والإضافات المطلوبة
-sudo apt install php php-mbstring php-zip php-gd php-json php-curl php-pgsql -y
+sudo apt install php php-mbstring php-zip php-gd php-json php-curl php-mysql libapache2-mod-php -y
+
+# التحقق من PHP
+php -v
 ```
 
-### 2. تثبيت phpPgAdmin (بديل phpMyAdmin لـ PostgreSQL)
+### 2. تثبيت phpMyAdmin
 
 ```bash
-# تثبيت phpPgAdmin
-sudo apt install phppgadmin -y
-
-# تعديل ملف الإعداد
-sudo nano /etc/apache2/conf-available/phppgadmin.conf
-```
-
-**تعديل الملف للسماح بالوصول:**
-```apache
-# السماح بالوصول من جميع العناوين (غير موصى به للإنتاج)
-# Require all granted
-
-# أو السماح من IP محدد فقط (موصى به)
-<Directory /usr/share/phppgadmin>
-    Require ip YOUR_IP_ADDRESS
-    Require ip 127.0.0.1
-</Directory>
-```
-
-```bash
-# تفعيل الإعداد
-sudo a2enconf phppgadmin
-
-# إعادة تشغيل Apache
-sudo systemctl restart apache2
-```
-
-### 3. تأمين phpPgAdmin
-
-```bash
-# إنشاء مصادقة HTTP Basic
-sudo htpasswd -c /etc/phppgadmin/.htpasswd admin
-# سيطلب منك إدخال كلمة المرور
-
-# تعديل ملف الإعداد
-sudo nano /etc/apache2/conf-available/phppgadmin.conf
-```
-
-**إضافة المصادقة:**
-```apache
-<Directory /usr/share/phppgadmin>
-    AuthType Basic
-    AuthName "Restricted Access"
-    AuthUserFile /etc/phppgadmin/.htpasswd
-    Require valid-user
-    
-    Require ip YOUR_IP_ADDRESS
-    Require ip 127.0.0.1
-</Directory>
-```
-
-```bash
-# إعادة التشغيل
-sudo systemctl restart apache2
-```
-
-**الوصول إلى phpPgAdmin:**
-```
-http://your_server_ip/phppgadmin
-```
-
-### 4. تثبيت phpMyAdmin (اختياري - للمستقبل إذا احتجت MySQL)
-
-```bash
-# تثبيت MySQL أولاً (اختياري)
-sudo apt install mysql-server -y
-sudo mysql_secure_installation
-
 # تثبيت phpMyAdmin
 sudo apt install phpmyadmin -y
+```
 
-# اختر apache2 عند السؤال
-# اختر Yes لإعداد قاعدة البيانات
-# أدخل كلمة مرور قوية
+**أثناء التثبيت:**
+- اختر `apache2` عند السؤال عن الـ web server
+- اختر `Yes` لإعداد قاعدة البيانات مع dbconfig-common
+- أدخل كلمة مرور قوية لقاعدة بيانات phpmyadmin
 
+```bash
 # تفعيل الإضافات المطلوبة
 sudo phpenmod mbstring
 
@@ -537,33 +427,72 @@ sudo phpenmod mbstring
 sudo systemctl restart apache2
 ```
 
-**تأمين phpMyAdmin:**
+### 3. تأمين phpMyAdmin
+
+**إنشاء مصادقة HTTP:**
 ```bash
-# إنشاء ملف .htaccess
+# إنشاء ملف كلمات المرور
+sudo htpasswd -c /etc/phpmyadmin/.htpasswd admin
+# أدخل كلمة مرور قوية
+
+# تعديل ملف إعداد Apache
 sudo nano /etc/apache2/conf-available/phpmyadmin.conf
 ```
 
-**إضافة:**
+**أضف داخل الملف:**
 ```apache
 <Directory /usr/share/phpmyadmin>
     Options FollowSymLinks
     DirectoryIndex index.php
     AllowOverride All
     
+    # HTTP Basic Authentication
     AuthType Basic
-    AuthName "Restricted Files"
+    AuthName "Restricted Access - phpMyAdmin"
     AuthUserFile /etc/phpmyadmin/.htpasswd
     Require valid-user
+    
+    # السماح من IP محدد فقط (اختياري)
+    # Require ip YOUR_IP_ADDRESS
+    # Require ip 127.0.0.1
 </Directory>
 ```
 
 ```bash
-# إنشاء ملف كلمات المرور
-sudo htpasswd -c /etc/phpmyadmin/.htpasswd admin
-
-# إعادة التشغيل
-sudo systemctl restart apache2
+# إعادة تحميل Apache
+sudo systemctl reload apache2
 ```
+
+**الوصول إلى phpMyAdmin:**
+```
+http://your_server_ip/phpmyadmin
+```
+- سيطلب منك اسم المستخدم وكلمة المرور (HTTP Auth)
+- ثم تسجيل الدخول بمستخدم MySQL (bot_user)
+
+### 4. تأمين phpMyAdmin إضافياً
+
+```bash
+# تغيير مسار الوصول الافتراضي (اختياري لكن موصى به)
+sudo nano /etc/apache2/conf-available/phpmyadmin.conf
+```
+
+**غيّر:**
+```apache
+Alias /phpmyadmin /usr/share/phpmyadmin
+```
+
+**إلى:**
+```apache
+Alias /my-secret-admin-panel /usr/share/phpmyadmin
+```
+
+```bash
+# إعادة التحميل
+sudo systemctl reload apache2
+```
+
+الآن الوصول سيكون عبر: `http://your_server_ip/my-secret-admin-panel`
 
 ---
 
@@ -578,18 +507,17 @@ sudo chown -R botadmin:botadmin /var/www/bots
 cd /var/www/bots
 ```
 
-### 2. رفع الكود أو استنساخه
+### 2. رفع الكود
 
-**الطريقة الأولى: استنساخ من Git (موصى به)**
+**الطريقة 1: استنساخ من Git**
 ```bash
-# إذا كان المشروع على GitHub
 git clone https://github.com/your-username/your-bot-repo.git telegram-bot
 cd telegram-bot
 ```
 
-**الطريقة الثانية: رفع الملفات يدوياً**
+**الطريقة 2: رفع الملفات يدوياً**
 ```bash
-# من جهازك المحلي، استخدم scp
+# من جهازك المحلي
 scp -P 2222 -r /path/to/local/project botadmin@your_server_ip:/var/www/bots/telegram-bot
 ```
 
@@ -601,8 +529,8 @@ cd /var/www/bots/telegram-bot
 # تثبيت المكتبات
 npm install
 
-# بناء المشروع (إذا لزم الأمر)
-npm run build
+# إذا كان هناك أخطاء في بعض الحزم
+npm install --legacy-peer-deps
 ```
 
 ### 4. إعداد متغيرات البيئة
@@ -614,13 +542,13 @@ nano .env
 
 **محتوى ملف `.env`:**
 ```bash
-# اتصال قاعدة البيانات
-DATABASE_URL="postgresql://bot_user:كلمة_مرور_قوية_أخرى@localhost:5432/telegram_bot_db"
+# اتصال MySQL
+DATABASE_URL="mysql://bot_user:كلمة_مرور_قوية_جداً@localhost:3306/telegram_bot_db"
 
 # معلومات بوت Telegram
 TELEGRAM_BOT_TOKEN="your_telegram_bot_token_here"
 
-# مفاتيح AI (حسب ما تستخدم)
+# مفاتيح AI
 OPENAI_API_KEY="your_openai_api_key"
 GROQ_API_KEY="your_groq_api_key"
 
@@ -630,22 +558,13 @@ NODE_ENV="production"
 # بورت التشغيل
 PORT=5000
 
-# URL الخاص بالبوت (للـ webhooks)
+# URL الخاص بالبوت
 BOT_URL="https://yourdomain.com"
 ```
 
 ```bash
 # تأمين ملف .env
 chmod 600 .env
-```
-
-### 5. اختبار التشغيل
-
-```bash
-# تشغيل تجريبي
-npm run dev
-
-# إذا عمل بنجاح، أوقفه بـ Ctrl+C
 ```
 
 ---
@@ -661,34 +580,41 @@ sudo apt install nginx -y
 # التحقق من الحالة
 sudo systemctl status nginx
 sudo systemctl enable nginx
+
+# إيقاف Apache إذا كان يعمل (يتعارض مع Nginx على port 80)
+sudo systemctl stop apache2
+sudo systemctl disable apache2
 ```
 
 ### 2. إعداد Reverse Proxy للبوت
 
 ```bash
-# إنشاء ملف إعداد للبوت
+# إنشاء ملف إعداد
 sudo nano /etc/nginx/sites-available/telegram-bot
 ```
 
 **محتوى الملف:**
 ```nginx
+# Upstream Node.js backend
 upstream telegram_bot {
     server 127.0.0.1:5000;
     keepalive 64;
 }
 
+# HTTP Server (سيتم تحويله لـ HTTPS لاحقاً)
 server {
     listen 80;
+    listen [::]:80;
     server_name yourdomain.com www.yourdomain.com;
     
-    # حماية من clickjacking
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    # إخفاء إصدار Nginx
+    server_tokens off;
     
-    # تحديد حجم الطلبات
+    # حدود الأمان
     client_max_body_size 10M;
+    client_body_buffer_size 1K;
+    client_header_buffer_size 1k;
+    large_client_header_buffers 2 1k;
     
     # Logs
     access_log /var/log/nginx/telegram-bot.access.log;
@@ -697,21 +623,27 @@ server {
     location / {
         proxy_pass http://telegram_bot;
         proxy_http_version 1.1;
+        
+        # WebSocket Support
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
+        
+        # Forward Client Info
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
         
         # Timeouts
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;
+        
+        # Cache bypass
+        proxy_cache_bypass $http_upgrade;
     }
     
-    # حماية الملفات الحساسة
+    # حماية الملفات المخفية
     location ~ /\. {
         deny all;
         access_log off;
@@ -734,59 +666,21 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-### 3. تأمين Nginx إضافياً
-
-```bash
-# تعديل الإعداد الرئيسي
-sudo nano /etc/nginx/nginx.conf
-```
-
-**إضافة/تعديل:**
-```nginx
-http {
-    # إخفاء إصدار Nginx
-    server_tokens off;
-    
-    # حدود الأمان
-    client_body_buffer_size 1K;
-    client_header_buffer_size 1k;
-    client_max_body_size 10M;
-    large_client_header_buffers 2 1k;
-    
-    # Timeouts
-    client_body_timeout 10;
-    client_header_timeout 10;
-    keepalive_timeout 5 5;
-    send_timeout 10;
-    
-    # حماية من DDoS
-    limit_req_zone $binary_remote_addr zone=one:10m rate=30r/m;
-    limit_req zone=one burst=5 nodelay;
-    
-    # باقي الإعدادات...
-}
-```
-
-```bash
-# إعادة التحميل
-sudo systemctl reload nginx
-```
-
 ---
 
-## تثبيت شهادة SSL
+## تثبيت SSL
 
 ### 1. تثبيت Certbot
 
 ```bash
-# تثبيت Certbot و plugin الخاص بـ Nginx
+# تثبيت Certbot
 sudo apt install certbot python3-certbot-nginx -y
 ```
 
 ### 2. الحصول على شهادة SSL
 
 ```bash
-# احصل على شهادة SSL مجانية من Let's Encrypt
+# احصل على شهادة SSL مجانية
 sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
 
 # اتبع التعليمات:
@@ -795,31 +689,17 @@ sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
 # - اختر إعادة التوجيه التلقائية إلى HTTPS (خيار 2)
 ```
 
-### 3. اختبار التجديد التلقائي
+### 3. تحسين إعدادات SSL
 
 ```bash
-# اختبار التجديد
-sudo certbot renew --dry-run
+# إنشاء DH parameters
+sudo openssl dhparam -out /etc/nginx/dhparam.pem 4096
 
-# Certbot سيجدد الشهادة تلقائياً عبر cron
-```
-
-### 4. تحسين إعدادات SSL
-
-```bash
 # تعديل ملف الإعداد
 sudo nano /etc/nginx/sites-available/telegram-bot
 ```
 
-**إضافة إعدادات SSL المحسّنة (معايير 2025):**
-
-أولاً، إنشاء Diffie-Hellman parameters:
-```bash
-# إنشاء DH parameters لتحسين الأمان (يستغرق 5 دقائق)
-sudo openssl dhparam -out /etc/nginx/dhparam.pem 4096
-```
-
-**ملف إعداد Nginx الكامل المحدث:**
+**التكوين الكامل المحدث:**
 ```nginx
 # Upstream Node.js backend
 upstream telegram_bot {
@@ -835,124 +715,73 @@ server {
     return 301 https://$server_name$request_uri;
 }
 
-# HTTPS Server - التكوين الآمن لعام 2025
+# HTTPS Server
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name yourdomain.com www.yourdomain.com;
     
-    # ========== شهادات SSL ==========
+    # شهادات SSL
     ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
     ssl_trusted_certificate /etc/letsencrypt/live/yourdomain.com/chain.pem;
     
-    # ========== إعدادات SSL/TLS الحديثة (2025) ==========
-    ssl_protocols TLSv1.2 TLSv1.3;  # TLS 1.3 للأداء والأمان الأفضل
-    ssl_prefer_server_ciphers off;  # دع المتصفح يختار الأفضل في TLS 1.3
+    # إعدادات SSL/TLS
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
     ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305';
-    
-    # DH Parameters
     ssl_dhparam /etc/nginx/dhparam.pem;
-    
-    # SSL Session
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 10m;
-    ssl_session_tickets off;  # تحسين الخصوصية
-    
-    # OCSP Stapling
+    ssl_session_tickets off;
     ssl_stapling on;
     ssl_stapling_verify on;
     resolver 8.8.8.8 8.8.4.4 valid=300s;
-    resolver_timeout 5s;
     
-    # ========== رؤوس الأمان (Security Headers 2025) ==========
-    
-    # HSTS - إجبار HTTPS لمدة سنة مع subdirectories
+    # Security Headers
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-    
-    # منع Clickjacking
     add_header X-Frame-Options "SAMEORIGIN" always;
-    
-    # منع MIME-type sniffing
     add_header X-Content-Type-Options "nosniff" always;
-    
-    # XSS Protection (تم تعطيله - موصى به في 2025)
     add_header X-XSS-Protection "0" always;
-    
-    # Content Security Policy (عدّل حسب احتياجاتك)
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self';" always;
-    
-    # Referrer Policy
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
     
-    # Permissions Policy (جديد في 2025 - بديل Feature-Policy)
-    add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()" always;
-    
-    # إخفاء إصدار Nginx
     server_tokens off;
     
-    # ========== حدود الحماية ==========
+    # حدود الأمان
+    client_max_body_size 10M;
     client_body_buffer_size 1K;
     client_header_buffer_size 1k;
-    client_max_body_size 10M;
     large_client_header_buffers 2 1k;
     
-    # Rate Limiting (حماية من DDoS)
-    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
-    limit_req zone=api_limit burst=20 nodelay;
-    
-    # ========== Proxy Configuration ==========
     location / {
         proxy_pass http://telegram_bot;
         proxy_http_version 1.1;
-        
-        # WebSocket Support
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        
-        # Forward Client Info
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $server_name;
-        
-        # Timeouts
         proxy_read_timeout 240s;
         proxy_connect_timeout 75s;
-        
-        # Disable buffering for real-time apps
         proxy_buffering off;
-        proxy_redirect off;
-        
-        # Cache bypass
         proxy_cache_bypass $http_upgrade;
     }
     
-    # حماية الملفات المخفية
     location ~ /\. {
         deny all;
         access_log off;
         log_not_found off;
     }
     
-    # Logs
     access_log /var/log/nginx/telegram-bot.access.log;
     error_log /var/log/nginx/telegram-bot.error.log warn;
 }
 ```
 
-**ملاحظات مهمة عن التحديثات:**
-- ✅ **TLS 1.3**: أسرع وأكثر أماناً من TLS 1.2
-- ✅ **Permissions-Policy**: بديل حديث لـ Feature-Policy
-- ✅ **X-XSS-Protection = 0**: تعطيل الفلتر القديم (موصى به 2025)
-- ✅ **ssl_prefer_server_ciphers = off**: أفضل لـ TLS 1.3
-- ✅ **ssl_session_tickets = off**: تحسين الخصوصية
-- ✅ **Rate Limiting**: حماية من هجمات DDoS
-```
-
 ```bash
-# إعادة تحميل Nginx
+# اختبار وإعادة تحميل
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -967,20 +796,18 @@ sudo systemctl reload nginx
 # تثبيت PM2 عالمياً
 sudo npm install -g pm2
 
-# التحقق من التثبيت
+# التحقق
 pm2 --version
 ```
 
-### 2. إعداد PM2 لتشغيل البوت
+### 2. إنشاء ملف إعداد PM2
 
 ```bash
 cd /var/www/bots/telegram-bot
-
-# إنشاء ملف إعداد PM2
 nano ecosystem.config.js
 ```
 
-**محتوى `ecosystem.config.js`:**
+**محتوى الملف:**
 ```javascript
 module.exports = {
   apps: [
@@ -1022,9 +849,15 @@ module.exports = {
 mkdir -p logs
 ```
 
-### 3. تشغيل البوت بـ PM2
+---
+
+## تشغيل البوت
+
+### 1. تشغيل البوت بـ PM2
 
 ```bash
+cd /var/www/bots/telegram-bot
+
 # تشغيل باستخدام ملف الإعداد
 pm2 start ecosystem.config.js
 
@@ -1033,117 +866,50 @@ pm2 status
 
 # عرض السجلات
 pm2 logs
-
-# عرض سجلات تطبيق محدد
-pm2 logs telegram-bot
-
-# إعادة التشغيل
-pm2 restart telegram-bot
-
-# إيقاف
-pm2 stop telegram-bot
-
-# حذف من PM2
-pm2 delete telegram-bot
 ```
 
-### 4. إعداد PM2 للتشغيل التلقائي عند بدء النظام
+### 2. إعداد PM2 للتشغيل التلقائي
 
 ```bash
-# حفظ قائمة العمليات الحالية
+# حفظ قائمة العمليات
 pm2 save
 
 # إنشاء startup script
 pm2 startup systemd
 
-# سينشئ PM2 أمر، قم بتشغيله (مثال):
+# سيظهر أمر، قم بتشغيله (مثال):
 # sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u botadmin --hp /home/botadmin
 
-# تأكيد الحفظ مرة أخرى
+# حفظ مرة أخرى
 pm2 save
 ```
 
-### 5. مراقبة PM2
+### 3. إعداد Telegram Webhook
 
 ```bash
-# عرض Dashboard تفاعلي
-pm2 monit
+# تحميل المتغيرات من .env
+source .env
 
-# عرض معلومات مفصلة
-pm2 show telegram-bot
-
-# تحديث PM2 (لاحقاً)
-pm2 update
-```
-
----
-
-## إعداد Telegram Webhook
-
-### 1. ضبط الـ webhook للبوت
-
-```bash
-# استخدم curl لضبط webhook
-curl -X POST "https://api.telegram.org/bot{YOUR_BOT_TOKEN}/setWebhook" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://yourdomain.com/webhooks/telegram/action",
-    "allowed_updates": ["message"]
-  }'
-```
-
-**أو استخدم السكريبت الموجود:**
-```bash
-cd /var/www/bots/telegram-bot
-
-# تعديل السكريبت
-nano scripts/setup-telegram-webhook.sh
-```
-
-**محتوى السكريبت:**
-```bash
-#!/bin/bash
-
-BOT_TOKEN="${TELEGRAM_BOT_TOKEN}"
-WEBHOOK_URL="${BOT_URL}/webhooks/telegram/action"
-
-if [ -z "$BOT_TOKEN" ]; then
-    echo "Error: TELEGRAM_BOT_TOKEN not set"
-    exit 1
-fi
-
-if [ -z "$BOT_URL" ]; then
-    echo "Error: BOT_URL not set"
-    exit 1
-fi
-
-echo "Setting webhook to: $WEBHOOK_URL"
-
-curl -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
+# ضبط webhook
+curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
   -H "Content-Type: application/json" \
   -d "{
-    \"url\": \"${WEBHOOK_URL}\",
+    \"url\": \"${BOT_URL}/webhooks/telegram/action\",
     \"allowed_updates\": [\"message\"]
   }"
 
-echo ""
-echo "Webhook set successfully!"
+# التحقق من webhook
+curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
 ```
 
-```bash
-# منح صلاحيات التنفيذ
-chmod +x scripts/setup-telegram-webhook.sh
-
-# تحميل المتغيرات وتشغيل السكريبت
-source .env
-./scripts/setup-telegram-webhook.sh
-```
-
-### 2. التحقق من الـ webhook
+### 4. اختبار البوت
 
 ```bash
-# التحقق من حالة webhook
-curl "https://api.telegram.org/bot{YOUR_BOT_TOKEN}/getWebhookInfo"
+# افتح Telegram وابحث عن بوتك
+# أرسل رسالة اختبارية مع رقم هاتف
+
+# راقب السجلات
+pm2 logs telegram-bot --lines 50
 ```
 
 ---
@@ -1153,63 +919,40 @@ curl "https://api.telegram.org/bot{YOUR_BOT_TOKEN}/getWebhookInfo"
 ### 1. مراقبة السجلات
 
 ```bash
-# سجلات PM2
+# PM2 logs
 pm2 logs --lines 100
+pm2 monit
 
-# سجلات Nginx
+# Nginx logs
 sudo tail -f /var/log/nginx/telegram-bot.access.log
 sudo tail -f /var/log/nginx/telegram-bot.error.log
 
-# سجلات PostgreSQL
-sudo tail -f /var/log/postgresql/postgresql-15-main.log
-
-# سجلات النظام
-sudo journalctl -u nginx -f
-sudo journalctl -u postgresql -f
+# MySQL logs
+sudo tail -f /var/log/mysql/error.log
 ```
 
-### 2. إعداد مراقبة الأداء
-
-```bash
-# تثبيت htop لمراقبة الموارد
-sudo apt install htop -y
-
-# تشغيل htop
-htop
-
-# تثبيت netdata لمراقبة شاملة (اختياري)
-bash <(curl -Ss https://my-netdata.io/kickstart.sh)
-
-# الوصول إلى netdata
-# http://your_server_ip:19999
-```
-
-### 3. النسخ الاحتياطي للقاعدة
+### 2. النسخ الاحتياطي التلقائي
 
 **إنشاء سكريبت النسخ الاحتياطي:**
 ```bash
-nano ~/backup-db.sh
+nano ~/backup-mysql.sh
 ```
 
 **محتوى السكريبت:**
 ```bash
 #!/bin/bash
 
-# إعدادات
 DB_NAME="telegram_bot_db"
 DB_USER="bot_user"
-BACKUP_DIR="/var/backups/postgresql"
+DB_PASS="كلمة_مرور_قوية_جداً"
+BACKUP_DIR="/var/backups/mysql"
 DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="$BACKUP_DIR/${DB_NAME}_${DATE}.sql.gz"
 
-# إنشاء مجلد النسخ الاحتياطي إذا لم يكن موجوداً
 mkdir -p $BACKUP_DIR
 
-# أخذ النسخة الاحتياطية
-export PGPASSWORD='كلمة_مرور_قوية_أخرى'
-pg_dump -U $DB_USER -h localhost $DB_NAME | gzip > $BACKUP_FILE
+mysqldump -u $DB_USER -p$DB_PASS $DB_NAME | gzip > $BACKUP_FILE
 
-# حذف النسخ الاحتياطية الأقدم من 30 يوم
 find $BACKUP_DIR -name "*.sql.gz" -mtime +30 -delete
 
 echo "Backup completed: $BACKUP_FILE"
@@ -1217,463 +960,120 @@ echo "Backup completed: $BACKUP_FILE"
 
 ```bash
 # منح صلاحيات التنفيذ
-chmod +x ~/backup-db.sh
+chmod +x ~/backup-mysql.sh
 
-# إضافة إلى cron للتشغيل اليومي
+# إضافة إلى cron
 crontab -e
 ```
 
-**أضف السطر التالي:**
+**أضف:**
 ```
-0 2 * * * /home/botadmin/backup-db.sh >> /home/botadmin/backup.log 2>&1
+0 2 * * * /home/botadmin/backup-mysql.sh >> /home/botadmin/backup.log 2>&1
 ```
 
-### 4. تحديثات الصيانة الدورية
+### 3. أوامر الصيانة
 
 ```bash
-# تحديث النظام شهرياً
+# إعادة تشغيل كل شيء
+sudo systemctl restart mysql nginx
+pm2 restart all
+
+# فحص الحالة
+sudo systemctl status mysql nginx
+pm2 status
+
+# فحص المساحة
+df -h
+
+# فحص الموارد
+htop
+
+# تحديث النظام
 sudo apt update && sudo apt upgrade -y
 
-# تحديث Node.js packages
+# تحديث npm packages
 cd /var/www/bots/telegram-bot
 npm update
-
-# التحقق من المكتبات القديمة
-npm outdated
-
-# التحقق من الثغرات الأمنية
-npm audit
 npm audit fix
 ```
 
-### 5. إعداد تنبيهات
-
-**تثبيت أداة للتنبيهات (اختياري):**
-```bash
-# مثال: إرسال تنبيه عند توقف الخدمة
-nano ~/check-service.sh
-```
-
-```bash
-#!/bin/bash
-
-SERVICE="telegram-bot"
-
-if ! pm2 status | grep -q "$SERVICE.*online"; then
-    # إعادة تشغيل الخدمة
-    pm2 restart $SERVICE
-    
-    # إرسال تنبيه (مثال: عبر curl لـ webhook)
-    curl -X POST "https://api.telegram.org/bot{YOUR_BOT_TOKEN}/sendMessage" \
-      -d "chat_id={YOUR_CHAT_ID}" \
-      -d "text=⚠️ تحذير: تم إعادة تشغيل خدمة $SERVICE"
-fi
-```
-
-```bash
-chmod +x ~/check-service.sh
-
-# إضافة إلى cron كل 5 دقائق
-crontab -e
-```
-
-```
-*/5 * * * * /home/botadmin/check-service.sh
-```
-
 ---
 
-## أوامر مفيدة للصيانة اليومية
+## استكشاف الأخطاء
 
-### إدارة PM2
+### البوت لا يستجيب
+
 ```bash
-pm2 status                    # عرض حالة جميع التطبيقات
-pm2 restart all               # إعادة تشغيل الكل
-pm2 logs --lines 50           # عرض آخر 50 سطر من السجلات
-pm2 monit                     # مراقبة الأداء
-pm2 flush                     # مسح السجلات
-```
-
-### إدارة Nginx
-```bash
-sudo nginx -t                 # اختبار الإعدادات
-sudo systemctl reload nginx   # إعادة تحميل الإعدادات
-sudo systemctl restart nginx  # إعادة تشغيل كاملة
-```
-
-### إدارة PostgreSQL
-```bash
-sudo systemctl status postgresql       # حالة الخدمة
-sudo -u postgres psql -d telegram_bot_db  # الدخول للقاعدة
-```
-
-### مراقبة الموارد
-```bash
-htop                          # مراقبة CPU و RAM
-df -h                         # مساحة القرص
-free -h                       # الذاكرة المتاحة
-netstat -tulpn                # المنافذ المفتوحة
-```
-
----
-
-## استكشاف الأخطاء وحلها
-
-### المشكلة: البوت لا يستجيب
-
-**الحلول:**
-```bash
-# 1. التحقق من حالة PM2
+# 1. تحقق من PM2
 pm2 status
+pm2 logs telegram-bot --lines 50
 
-# 2. عرض السجلات للأخطاء
-pm2 logs telegram-bot --lines 100
+# 2. تحقق من MySQL
+sudo systemctl status mysql
+mysql -u bot_user -p -e "SELECT 1;"
 
-# 3. التحقق من الاتصال بقاعدة البيانات
-sudo -u postgres psql -d telegram_bot_db -c "SELECT 1;"
+# 3. تحقق من Nginx
+sudo nginx -t
+sudo systemctl status nginx
 
-# 4. التحقق من webhook
-curl "https://api.telegram.org/bot{YOUR_BOT_TOKEN}/getWebhookInfo"
+# 4. تحقق من webhook
+curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
 
 # 5. إعادة تشغيل كل شيء
 pm2 restart all
-```
-
-### المشكلة: خطأ في الاتصال بقاعدة البيانات
-
-```bash
-# التحقق من عمل PostgreSQL
-sudo systemctl status postgresql
-
-# التحقق من الاتصال
-psql -U bot_user -d telegram_bot_db -h localhost
-
-# مراجعة سجلات PostgreSQL
-sudo tail -f /var/log/postgresql/postgresql-15-main.log
-```
-
-### المشكلة: Nginx يعرض 502 Bad Gateway
-
-```bash
-# التحقق من أن البوت يعمل
-pm2 status
-
-# التحقق من البورت
-netstat -tulpn | grep 5000
-
-# مراجعة سجلات Nginx
-sudo tail -f /var/log/nginx/telegram-bot.error.log
-
-# إعادة تشغيل كل شيء
-pm2 restart telegram-bot
 sudo systemctl restart nginx
 ```
 
----
+### خطأ في الاتصال بقاعدة البيانات
 
-## نصائح أمان إضافية
-
-1. **غيّر كلمات المرور بانتظام**
-   ```bash
-   # تغيير كلمة مرور PostgreSQL
-   sudo -u postgres psql -c "ALTER USER bot_user WITH PASSWORD 'كلمة_مرور_جديدة';"
-   ```
-
-2. **راقب محاولات الدخول الفاشلة**
-   ```bash
-   sudo grep "Failed password" /var/log/auth.log | tail -20
-   ```
-
-3. **تحديث SSL Certificates**
-   ```bash
-   sudo certbot renew
-   ```
-
-4. **مراجعة Firewall Rules**
-   ```bash
-   sudo ufw status numbered
-   ```
-
-5. **فحص الثغرات الأمنية**
-   ```bash
-   sudo rkhunter --check
-   sudo clamscan -r /var/www/bots/telegram-bot
-   ```
-
----
-
-## خاتمة
-
-الآن لديك بوت Telegram مثبت بشكل احترافي على سيرفر Ubuntu مع:
-
-✅ إعدادات أمان عالية  
-✅ PostgreSQL محمي ومُحسّن  
-✅ phpPgAdmin للإدارة السهلة  
-✅ Nginx كـ Reverse Proxy  
-✅ شهادة SSL مجانية  
-✅ PM2 لإدارة العمليات  
-✅ نسخ احتياطية تلقائية  
-✅ مراقبة وتنبيهات  
-
-**للدعم الفني:**
-- راجع السجلات أولاً
-- تحقق من المتغيرات البيئية
-- تأكد من تحديث جميع المكونات
-
-**روابط مفيدة:**
-- [Mastra Documentation](https://mastra.ai/docs)
-- [PostgreSQL Docs](https://www.postgresql.org/docs/)
-- [Nginx Documentation](https://nginx.org/en/docs/)
-- [PM2 Documentation](https://pm2.keymetrics.io/docs/)
-- [Let's Encrypt](https://letsencrypt.org/)
-
----
-
-## اختبار الأمان والجودة
-
-بعد الانتهاء من التثبيت، اختبر أمان سيرفرك باستخدام هذه الأدوات:
-
-### 1. اختبار SSL/TLS
 ```bash
-# SSL Labs - الأداة الأشهر لفحص SSL
-# زر: https://www.ssllabs.com/ssltest/
-# أدخل: yourdomain.com
-# الهدف: الحصول على تقييم A+
+# تحقق من MySQL
+sudo systemctl status mysql
+
+# اختبر الاتصال
+mysql -u bot_user -p telegram_bot_db
+
+# راجع السجلات
+sudo tail -f /var/log/mysql/error.log
 ```
 
-### 2. اختبار Security Headers
+### Nginx يعرض 502 Bad Gateway
+
 ```bash
-# Security Headers Check
-# زر: https://securityheaders.com
-# أدخل: https://yourdomain.com
-# الهدف: الحصول على تقييم A
-```
+# تحقق من البوت
+pm2 status
 
-### 3. اختبار Content Security Policy
-```bash
-# CSP Evaluator
-# زر: https://csp-evaluator.withgoogle.com
-# الصق CSP header الخاص بك
-```
+# تحقق من البورت
+netstat -tulpn | grep 5000
 
-### 4. اختبار الثغرات الأمنية
-```bash
-# فحص المنافذ المفتوحة
-sudo nmap -sV localhost
-
-# فحص الثغرات في المكتبات
-cd /var/www/bots/telegram-bot
-npm audit
-
-# إصلاح الثغرات البسيطة
-npm audit fix
-
-# فحص rootkits
-sudo rkhunter --check
-
-# فحص الفيروسات
-sudo clamscan -r /var/www/bots/telegram-bot
-```
-
-### 5. اختبار الأداء والأمان معاً
-```bash
-# استخدام Mozilla Observatory
-# زر: https://observatory.mozilla.org
-# أدخل: yourdomain.com
-# الهدف: الحصول على درجة A+
+# راجع السجلات
+sudo tail -f /var/log/nginx/telegram-bot.error.log
+pm2 logs telegram-bot
 ```
 
 ---
 
 ## قائمة التحقق النهائية
 
-قبل وضع السيرفر في الإنتاج، تأكد من:
-
-### الأمان الأساسي
-- [ ] تم تغيير SSH port من 22
-- [ ] تم تعطيل root login
-- [ ] تم تفعيل SSH key authentication
-- [ ] تم تثبيت وتفعيل UFW firewall
-- [ ] تم تثبيت وإعداد Fail2Ban
-- [ ] تم تفعيل automatic security updates
-
-### قاعدة البيانات
-- [ ] تم تغيير كلمة مرور postgres
-- [ ] تم إنشاء مستخدم خاص بالبوت (ليس superuser)
-- [ ] تم استخدام scram-sha-256 في pg_hba.conf
-- [ ] تم تقييد listen_addresses على localhost فقط
-- [ ] تم إلغاء صلاحيات PUBLIC schema
-- [ ] تم إعداد النسخ الاحتياطي التلقائي
-
-### الويب والشبكة
-- [ ] تم تثبيت شهادة SSL من Let's Encrypt
-- [ ] تم الحصول على تقييم A+ في SSL Labs
-- [ ] تم إعداد جميع Security Headers
-- [ ] تم تفعيل HTTP/2
-- [ ] تم إعداد Rate Limiting
-- [ ] تم إخفاء إصدار Nginx (server_tokens off)
-- [ ] تم تفعيل HSTS
-
-### البوت والتطبيق
-- [ ] تم تثبيت PM2 وإعداد auto-restart
-- [ ] تم تثبيت PM2 startup script
-- [ ] تم إعداد Telegram webhook بشكل صحيح
+- [ ] تم تحديث النظام
+- [ ] تم تأمين SSH
+- [ ] تم تثبيت UFW و Fail2Ban
+- [ ] تم تثبيت Node.js 20
+- [ ] تم تثبيت MySQL وتأمينه
+- [ ] تم إنشاء قاعدة البيانات والجداول
+- [ ] تم تثبيت phpMyAdmin وتأمينه
+- [ ] تم رفع كود البوت
+- [ ] تم إعداد ملف .env
+- [ ] تم تثبيت Nginx
+- [ ] تم الحصول على SSL Certificate
+- [ ] تم تثبيت PM2
+- [ ] تم تشغيل البوت
+- [ ] تم إعداد Telegram webhook
 - [ ] تم اختبار البوت والتأكد من عمله
-- [ ] تم إعداد ملف .env بجميع المتغيرات
-- [ ] تم تأمين ملف .env (chmod 600)
-- [ ] تم اختبار npm audit وإصلاح الثغرات
-
-### المراقبة والصيانة
-- [ ] تم إعداد سجلات PM2
-- [ ] تم إعداد سجلات Nginx
 - [ ] تم إعداد النسخ الاحتياطي التلقائي
-- [ ] تم إعداد cron jobs للصيانة
-- [ ] تم اختبار استعادة النسخة الاحتياطية
-
----
-
-## أوامر سريعة للرجوع إليها
-
-### إعادة تشغيل الخدمات
-```bash
-# إعادة تشغيل كل شيء
-sudo systemctl restart postgresql nginx
-pm2 restart all
-
-# التحقق من الحالة
-sudo systemctl status postgresql nginx
-pm2 status
-```
-
-### مراقبة السجلات
-```bash
-# PM2
-pm2 logs --lines 100
-
-# Nginx
-sudo tail -f /var/log/nginx/telegram-bot.error.log
-
-# PostgreSQL
-sudo tail -f /var/log/postgresql/postgresql-16-main.log
-
-# نظام
-sudo journalctl -xe
-```
-
-### فحص الموارد
-```bash
-# استخدام CPU والذاكرة
-htop
-
-# مساحة القرص
-df -h
-
-# الذاكرة
-free -h
-
-# المنافذ المفتوحة
-sudo netstat -tulpn | grep LISTEN
-```
-
-### النسخ الاحتياطي والاستعادة
-```bash
-# نسخ احتياطي يدوي
-sudo -u postgres pg_dump telegram_bot_db > backup_$(date +%Y%m%d).sql
-
-# استعادة النسخة
-sudo -u postgres psql telegram_bot_db < backup_20251113.sql
-
-# نسخ ملفات البوت
-tar -czf bot_backup_$(date +%Y%m%d).tar.gz /var/www/bots/telegram-bot
-```
-
----
-
-## الدعم والمساعدة
-
-### المشاكل الشائعة وحلولها
-
-**المشكلة: البوت لا يرد على الرسائل**
-```bash
-# 1. تحقق من PM2
-pm2 status
-pm2 logs telegram-bot --lines 50
-
-# 2. تحقق من webhook
-curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
-
-# 3. تحقق من Nginx
-sudo nginx -t
-sudo tail -f /var/log/nginx/telegram-bot.error.log
-
-# 4. تحقق من قاعدة البيانات
-sudo -u postgres psql -d telegram_bot_db -c "SELECT 1;"
-```
-
-**المشكلة: SSL Certificate لا يعمل**
-```bash
-# تجديد الشهادة
-sudo certbot renew --force-renewal
-
-# إعادة تشغيل Nginx
-sudo systemctl restart nginx
-
-# فحص الشهادة
-sudo certbot certificates
-```
-
-**المشكلة: نفاد المساحة**
-```bash
-# فحص المساحة
-df -h
-
-# حذف السجلات القديمة
-sudo journalctl --vacuum-time=7d
-
-# تنظيف PM2 logs
-pm2 flush
-
-# حذف الحزم غير المستخدمة
-sudo apt autoremove
-sudo apt clean
-```
-
----
-
-## موارد مفيدة
-
-### الوثائق الرسمية
-- **Node.js**: https://nodejs.org/en/docs/
-- **PostgreSQL**: https://www.postgresql.org/docs/
-- **Nginx**: https://nginx.org/en/docs/
-- **PM2**: https://pm2.keymetrics.io/docs/
-- **Mastra**: https://mastra.ai/docs
-- **Telegram Bot API**: https://core.telegram.org/bots/api
-
-### أدوات الأمان
-- **SSL Labs Test**: https://www.ssllabs.com/ssltest/
-- **Security Headers**: https://securityheaders.com
-- **Mozilla Observatory**: https://observatory.mozilla.org
-- **CSP Evaluator**: https://csp-evaluator.withgoogle.com
-
-### المجتمعات العربية
-- مجموعات Telegram للدعم الفني
-- منتديات Stack Overflow بالعربية
-- قنوات YouTube للشروحات
 
 ---
 
 **تم إنشاء هذا الدليل بمعايير الأمان لعام 2025**  
-**تاريخ آخر تحديث:** نوفمبر 2025  
-**الإصدار:** 2.0
-
-**ملاحظة هامة:** هذا الدليل يتبع أفضل ممارسات الأمان الحديثة بما في ذلك:
-- TLS 1.3
-- PostgreSQL 16 مع scram-sha-256
-- Node.js 20 LTS
-- Security Headers الحديثة (Permissions-Policy, CSP)
-- Rate Limiting متقدم
-- تشفير SSL/TLS محسّن
-
-تأكد من مراجعة الدليل بشكل دوري للحصول على التحديثات الأمنية الجديدة.
-
+**آخر تحديث:** نوفمبر 2025  
+**الإصدار:** 3.0 - MySQL Edition
