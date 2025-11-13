@@ -61,11 +61,10 @@ function phoneVariants(p: string): Set<string> {
 export const phoneLookupTool = createTool({
   id: "phone-lookup",
   
-  description: "Search for phone numbers in databases. VIP users search in VIP database, regular users in regular database. Returns matching records from both facebook and contacts tables.",
+  description: "Search for phone numbers in databases. Regular users search ONLY in facebook_accounts. VIP users search in ALL databases (facebook_accounts AND contacts).",
   
   inputSchema: z.object({
     phone: z.string().describe("Phone number to search for (supports various formats: +20, 00, 0, etc.)"),
-    telegramUserId: z.number().describe("Telegram user ID to determine database access (VIP or Regular)"),
   }),
   
   outputSchema: z.object({
@@ -90,11 +89,20 @@ export const phoneLookupTool = createTool({
     })),
   }),
   
-  execute: async ({ context, mastra }) => {
+  execute: async ({ context, mastra, runtimeContext }) => {
     const logger = mastra?.getLogger();
+    
+    // Get telegramUserId from runtime context
+    const telegramUserId = runtimeContext?.get("telegramUserId") as number | undefined;
+    
+    if (!telegramUserId || typeof telegramUserId !== 'number') {
+      logger?.error('⚠️ [PhoneLookupTool] No telegramUserId in runtime context');
+      throw new Error('❌ خطأ في النظام: لم يتم العثور على معرف المستخدم. يرجى المحاولة مرة أخرى.');
+    }
+    
     logger?.info('🔧 [PhoneLookupTool] Starting execution', { 
       phone: context.phone,
-      telegramUserId: context.telegramUserId 
+      telegramUserId 
     });
     
     const variants = phoneVariants(context.phone);
@@ -107,32 +115,51 @@ export const phoneLookupTool = createTool({
       return { userType: 'unknown', facebook: [], contacts: [] };
     }
     
-    // Check if user is VIP
-    const isVIP = await isVIPUser(context.telegramUserId);
-    const userType = isVIP ? 'VIP' : 'Regular';
+    // Import hasActiveSubscription
+    const { hasActiveSubscription } = await import('../config/database');
+    
+    // Check subscription status
+    const subscription = await hasActiveSubscription(telegramUserId);
+    
+    if (!subscription.hasSubscription) {
+      logger?.warn('⚠️ [PhoneLookupTool] No active subscription found', { 
+        telegramUserId 
+      });
+      throw new Error('❌ ليس لديك اشتراك نشط. للاستفادة من خدمة البحث، يرجى الاشتراك أولاً. اتصل بالدعم للحصول على اشتراك VIP أو عادي.');
+    }
+    
+    const userType = subscription.subscriptionType === 'vip' ? 'VIP' : 'Regular';
+    const isVIP = subscription.subscriptionType === 'vip';
     const pool = isVIP ? vipPool : regularPool;
     
     logger?.info(`👤 [PhoneLookupTool] User type: ${userType}`, { 
-      telegramUserId: context.telegramUserId,
-      isVIP 
+      telegramUserId,
+      subscriptionType: subscription.subscriptionType
     });
     
     try {
       const variantsArray = Array.from(variants);
-      
-      // Search in facebook_accounts table
       const fbPlaceholders = variantsArray.map(() => '?').join(', ');
+      
+      // Search in facebook_accounts table (BOTH Regular and VIP users)
       const fbQuery = `SELECT * FROM facebook_accounts WHERE phone IN (${fbPlaceholders})`;
       logger?.info('🔍 [PhoneLookupTool] Querying facebook_accounts table');
       const [fbRows] = await pool.query<RowDataPacket[]>(fbQuery, variantsArray);
       
-      // Search in contacts table (check both phone and phone2)
-      const contactsQuery = `
-        SELECT * FROM contacts 
-        WHERE phone IN (${fbPlaceholders}) OR phone2 IN (${fbPlaceholders})
-      `;
-      logger?.info('🔍 [PhoneLookupTool] Querying contacts table');
-      const [contactsRows] = await pool.query<RowDataPacket[]>(contactsQuery, [...variantsArray, ...variantsArray]);
+      let contactsRows: RowDataPacket[] = [];
+      
+      // Search in contacts table ONLY for VIP users
+      if (isVIP) {
+        const contactsQuery = `
+          SELECT * FROM contacts 
+          WHERE phone IN (${fbPlaceholders}) OR phone2 IN (${fbPlaceholders})
+        `;
+        logger?.info('🔍 [PhoneLookupTool] Querying contacts table (VIP only)');
+        const [rows] = await pool.query<RowDataPacket[]>(contactsQuery, [...variantsArray, ...variantsArray]);
+        contactsRows = rows;
+      } else {
+        logger?.info('⏭️ [PhoneLookupTool] Skipping contacts table (Regular user)');
+      }
       
       logger?.info('✅ [PhoneLookupTool] Search completed', { 
         userType,

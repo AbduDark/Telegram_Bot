@@ -1,5 +1,6 @@
 import { Mastra } from "@mastra/core";
 import { MastraError } from "@mastra/core/error";
+import { RuntimeContext } from "@mastra/core/di";
 import { PinoLogger } from "@mastra/loggers";
 import { LogLevel, MastraLogger } from "@mastra/core/logger";
 import pino from "pino";
@@ -128,9 +129,15 @@ export const mastra = new Mastra({
             const userName = payload.message?.from?.username || "مستخدم";
             const message = payload.message?.text || "";
             const chatId = payload.message?.chat?.id;
+            const telegramUserId = payload.message?.from?.id; // Extract user ID
             
             if (!chatId) {
               logger?.warn("⚠️ [Telegram] No chat ID found");
+              return c.text("OK", 200);
+            }
+            
+            if (!telegramUserId) {
+              logger?.warn("⚠️ [Telegram] No user ID found");
               return c.text("OK", 200);
             }
             
@@ -142,10 +149,18 @@ export const mastra = new Mastra({
               responseText = "من فضلك ابعت رقم موبايل صحيح. 📱\n\nمثال: +201234567890 أو 01234567890";
             } else {
               // Use agent directly for faster response
-              logger?.info("🤖 [Telegram] Calling agent");
+              logger?.info("🤖 [Telegram] Calling agent", { 
+                userName, 
+                telegramUserId 
+              });
+              
+              // Create runtime context with telegramUserId
+              const runtimeContext = new RuntimeContext<{ telegramUserId: number }>();
+              runtimeContext.set("telegramUserId", telegramUserId);
               
               const agentResponse = await telegramBotAgent.generate(
-                `ابحث عن هذا الرقم: ${message}`
+                `ابحث عن هذا الرقم: ${message}`,
+                { runtimeContext }
               );
               
               const greeting = userName ? `مرحباً @${userName}! 👋\n\n` : '';
