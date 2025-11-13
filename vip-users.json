@@ -1,0 +1,9 @@
+[
+  {
+    "telegram_user_id": 123456789,
+    "username": "example_user",
+    "subscription_type": "vip",
+    "notes": "مثال - استبدل بمستخدمين حقيقيين",
+    "added_at": "2025-11-13T00:00:00.000Z"
+  }
+]

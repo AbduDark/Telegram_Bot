@@ -6,6 +6,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "mastra dev",
     "build": "mastra build",
+    "setup": "node setup.js",
     "check": "tsc",
     "check:format": "prettier --check '**/*.ts'",
     "format": "prettier --write '**/*.ts'"
@@ -37,6 +38,7 @@
     "exa-js": "^1.8.17",
     "inngest": "^3.40.2",
     "inngest-cli": "^1.11.5",
+    "mysql2": "^3.15.3",
     "pino": "^9.9.4",
     "tsx": "^4.20.3",
     "zod": "^3.25.76"
