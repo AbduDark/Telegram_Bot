@@ -1,10 +1,11 @@
 /**
  * Database Configuration
- * Manages connections to VIP and Regular databases
+ * Single unified database for all users
  * 
- * IMPORTANT: All user subscriptions (both VIP and Regular) are stored in the VIP database
- * in the user_subscriptions table. This centralizes subscription management.
- * The Regular database only stores Regular users' data (facebook_accounts, contacts).
+ * IMPORTANT: All users (VIP and Regular) use the same database.
+ * - Regular users: Search only in facebook_accounts table
+ * - VIP users: Search in all available tables (facebook_accounts, contacts, etc.)
+ * - User subscriptions are stored in user_subscriptions table
  */
 
 import mysql from 'mysql2/promise';
@@ -17,22 +18,22 @@ export interface DatabaseConfig {
   password: string;
 }
 
-// VIP Database Configuration
-export const vipDbConfig: DatabaseConfig = {
-  host: process.env.VIP_DB_HOST || 'localhost',
-  port: parseInt(process.env.VIP_DB_PORT || '3306'),
-  database: process.env.VIP_DB_NAME || 'telegram_bot_vip',
-  user: process.env.VIP_DB_USER || 'bot_user',
-  password: process.env.VIP_DB_PASSWORD || '',
-};
+/**
+ * Table Configuration
+ * Define which tables each user type can access
+ */
+export const TABLE_CONFIG = {
+  REGULAR_TABLES: ['facebook_accounts'],
+  VIP_TABLES: ['facebook_accounts', 'contacts'],
+} as const;
 
-// Regular Database Configuration
-export const regularDbConfig: DatabaseConfig = {
-  host: process.env.REGULAR_DB_HOST || 'localhost',
-  port: parseInt(process.env.REGULAR_DB_PORT || '3306'),
-  database: process.env.REGULAR_DB_NAME || 'telegram_bot_regular',
-  user: process.env.REGULAR_DB_USER || 'bot_user',
-  password: process.env.REGULAR_DB_PASSWORD || '',
+// Single Database Configuration
+export const dbConfig: DatabaseConfig = {
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '3306'),
+  database: process.env.DB_NAME || 'telegram_bot',
+  user: process.env.DB_USER || 'bot_user',
+  password: process.env.DB_PASSWORD || '',
 };
 
 /**
@@ -54,19 +55,16 @@ export function createPool(config: DatabaseConfig) {
   });
 }
 
-// Connection pools
-export const vipPool = createPool(vipDbConfig);
-export const regularPool = createPool(regularDbConfig);
+// Single connection pool for all users
+export const dbPool = createPool(dbConfig);
 
 /**
  * Check if a user is VIP with active subscription
  * Checks both is_active flag and subscription_end date
- * 
- * NOTE: All subscriptions are stored in VIP database (user_subscriptions table)
  */
 export async function isVIPUser(telegramUserId: number): Promise<boolean> {
   try {
-    const [rows] = await vipPool.query(
+    const [rows] = await dbPool.query(
       `SELECT is_active, subscription_end FROM user_subscriptions 
        WHERE telegram_user_id = ? 
        AND subscription_type = 'vip' 
@@ -83,20 +81,16 @@ export async function isVIPUser(telegramUserId: number): Promise<boolean> {
 
 /**
  * Check if a user has any active subscription (VIP or Regular)
- * 
- * NOTE: All subscriptions are stored in VIP database (user_subscriptions table)
  * This is the centralized source of truth for all subscription types
  */
 export async function hasActiveSubscription(telegramUserId: number): Promise<{hasSubscription: boolean, subscriptionType: string}> {
   try {
-    // Check VIP first
     const isVIP = await isVIPUser(telegramUserId);
     if (isVIP) {
       return { hasSubscription: true, subscriptionType: 'vip' };
     }
     
-    // Check Regular subscription (also stored in VIP DB)
-    const [rows] = await vipPool.query(
+    const [rows] = await dbPool.query(
       `SELECT is_active, subscription_end FROM user_subscriptions 
        WHERE telegram_user_id = ? 
        AND subscription_type = 'regular' 
@@ -121,7 +115,7 @@ export async function hasActiveSubscription(telegramUserId: number): Promise<{ha
  */
 export async function getSubscriptionDetails(telegramUserId: number) {
   try {
-    const [rows]: any = await vipPool.query(
+    const [rows]: any = await dbPool.query(
       `SELECT telegram_user_id, username, subscription_type, subscription_start, 
               subscription_end, is_active, created_at
        FROM user_subscriptions 
@@ -143,16 +137,13 @@ export async function getSubscriptionDetails(telegramUserId: number) {
 
 /**
  * Renew subscription for a user (monthly)
- * 
- * NOTE: All subscriptions are stored in VIP database (user_subscriptions table)
  */
 export async function renewSubscription(telegramUserId: number, subscriptionType: 'vip' | 'regular', months: number = 1) {
   try {
-    // Calculate new end date (current date + months)
     const newEndDate = new Date();
     newEndDate.setMonth(newEndDate.getMonth() + months);
     
-    const [result]: any = await vipPool.query(
+    const [result]: any = await dbPool.query(
       `UPDATE user_subscriptions 
        SET subscription_end = ?, is_active = TRUE, updated_at = NOW()
        WHERE telegram_user_id = ? AND subscription_type = ?`,
@@ -175,8 +166,6 @@ export async function renewSubscription(telegramUserId: number, subscriptionType
 
 /**
  * Cancel subscription for a user (specific type)
- * 
- * NOTE: All subscriptions are stored in VIP database (user_subscriptions table)
  */
 export async function cancelSubscription(telegramUserId: number, subscriptionType?: 'vip' | 'regular') {
   try {
@@ -185,13 +174,12 @@ export async function cancelSubscription(telegramUserId: number, subscriptionTyp
                  WHERE telegram_user_id = ?`;
     let params: any[] = [telegramUserId];
     
-    // If subscriptionType is specified, only cancel that type
     if (subscriptionType) {
       query += ` AND subscription_type = ?`;
       params.push(subscriptionType);
     }
     
-    const [result]: any = await vipPool.query(query, params);
+    const [result]: any = await dbPool.query(query, params);
     
     if (result.affectedRows === 0) {
       return { 
@@ -209,8 +197,6 @@ export async function cancelSubscription(telegramUserId: number, subscriptionTyp
 
 /**
  * Add new subscription for a user
- * 
- * NOTE: All subscriptions are stored in VIP database (user_subscriptions table)
  */
 export async function addSubscription(
   telegramUserId: number, 
@@ -219,10 +205,15 @@ export async function addSubscription(
   months: number = 1
 ) {
   try {
+    if (subscriptionType !== 'vip' && subscriptionType !== 'regular') {
+      console.error('Invalid subscription type:', subscriptionType);
+      return { success: false, error: 'Invalid subscription type. Must be vip or regular.' };
+    }
+    
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + months);
     
-    const [result]: any = await vipPool.query(
+    const [result]: any = await dbPool.query(
       `INSERT INTO user_subscriptions 
        (telegram_user_id, username, subscription_type, subscription_start, subscription_end, is_active) 
        VALUES (?, ?, ?, NOW(), ?, TRUE)
@@ -249,8 +240,8 @@ export async function addSubscription(
 }
 
 /**
- * Get the appropriate database pool based on user type
+ * Get available tables for a user based on subscription type
  */
-export function getDatabaseForUser(isVIP: boolean) {
-  return isVIP ? vipPool : regularPool;
+export function getTablesForUser(subscriptionType: 'vip' | 'regular'): readonly string[] {
+  return subscriptionType === 'vip' ? TABLE_CONFIG.VIP_TABLES : TABLE_CONFIG.REGULAR_TABLES;
 }

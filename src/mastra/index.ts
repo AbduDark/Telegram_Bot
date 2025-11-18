@@ -200,6 +200,166 @@ export const mastra = new Mastra({
           }
         },
       },
+      // Telegram Stars - Pre-checkout query handler
+      {
+        path: "/webhooks/telegram/pre_checkout",
+        method: "POST",
+        handler: async (c) => {
+          const mastra = c.get("mastra");
+          const logger = mastra.getLogger();
+          
+          try {
+            const payload = await c.req.json();
+            logger?.info("💳 [Telegram Stars] Pre-checkout query received", { 
+              preCheckoutQueryId: payload.pre_checkout_query?.id 
+            });
+            
+            const preCheckoutQuery = payload.pre_checkout_query;
+            const token = process.env.TELEGRAM_BOT_TOKEN;
+            
+            if (!token) {
+              logger?.error("❌ [Telegram Stars] TELEGRAM_BOT_TOKEN not configured");
+              return c.text("Service Unavailable", 503);
+            }
+            
+            if (!preCheckoutQuery) {
+              logger?.warn("⚠️ [Telegram Stars] No pre-checkout query in payload");
+              return c.text("OK", 200);
+            }
+            
+            const { dbPool } = await import('./config/database');
+            try {
+              await dbPool.query('SELECT 1');
+            } catch (dbError) {
+              logger?.error("❌ [Telegram Stars] Database not available", dbError);
+              await fetch(`https://api.telegram.org/bot${token}/answerPreCheckoutQuery`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  pre_checkout_query_id: preCheckoutQuery.id,
+                  ok: false,
+                  error_message: "Service temporarily unavailable. Please try again later.",
+                }),
+              });
+              return c.text("Service Unavailable", 503);
+            }
+            
+            await fetch(`https://api.telegram.org/bot${token}/answerPreCheckoutQuery`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                pre_checkout_query_id: preCheckoutQuery.id,
+                ok: true,
+              }),
+            });
+            
+            logger?.info("✅ [Telegram Stars] Pre-checkout approved");
+            return c.text("OK", 200);
+          } catch (error) {
+            logger?.error("❌ [Telegram Stars] Error handling pre-checkout", error);
+            return c.text("Internal Server Error", 500);
+          }
+        },
+      },
+      // Telegram Stars - Successful payment handler
+      {
+        path: "/webhooks/telegram/payment",
+        method: "POST",
+        handler: async (c) => {
+          const mastra = c.get("mastra");
+          const logger = mastra.getLogger();
+          
+          try {
+            const payload = await c.req.json();
+            const successfulPayment = payload.message?.successful_payment;
+            
+            if (!successfulPayment) {
+              logger?.warn("⚠️ [Telegram Stars] No payment data found");
+              return c.text("OK", 200);
+            }
+            
+            logger?.info("💰 [Telegram Stars] Payment successful", { 
+              amount: successfulPayment.total_amount,
+              currency: successfulPayment.currency,
+              invoicePayload: successfulPayment.invoice_payload
+            });
+            
+            const telegramUserId = payload.message?.from?.id;
+            const username = payload.message?.from?.username || "unknown";
+            const chatId = payload.message?.chat?.id;
+            
+            if (!telegramUserId) {
+              logger?.error("⚠️ [Telegram Stars] No user ID in payment - cannot process");
+              return c.text("Bad Request", 400);
+            }
+            
+            const { addSubscription } = await import('./config/database');
+            
+            const invoicePayload = successfulPayment.invoice_payload;
+            let subscriptionType: 'vip' | 'regular' = 'regular';
+            let months = 1;
+            
+            if (invoicePayload.includes('vip')) {
+              subscriptionType = 'vip';
+            }
+            if (invoicePayload.includes('3months')) {
+              months = 3;
+            } else if (invoicePayload.includes('6months')) {
+              months = 6;
+            } else if (invoicePayload.includes('12months')) {
+              months = 12;
+            }
+            
+            const result = await addSubscription(telegramUserId, username, subscriptionType, months);
+            
+            const token = process.env.TELEGRAM_BOT_TOKEN;
+            
+            if (result.success) {
+              logger?.info("✅ [Telegram Stars] Subscription activated", { 
+                telegramUserId,
+                subscriptionType,
+                months,
+                endDate: result.endDate
+              });
+              
+              if (token && chatId) {
+                const message = subscriptionType === 'vip' 
+                  ? `🎉 تم تفعيل اشتراك VIP بنجاح!\n\nمدة الاشتراك: ${months} شهر\nتاريخ الانتهاء: ${result.endDate?.toLocaleDateString('ar-EG')}\n\nيمكنك الآن البحث في جميع قواعد البيانات! 🔍`
+                  : `✅ تم تفعيل الاشتراك العادي بنجاح!\n\nمدة الاشتراك: ${months} شهر\nتاريخ الانتهاء: ${result.endDate?.toLocaleDateString('ar-EG')}\n\nيمكنك الآن البحث في قاعدة Facebook! 📱`;
+                
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chat_id: chatId,
+                    text: message,
+                  }),
+                });
+              }
+            } else {
+              logger?.error("❌ [Telegram Stars] Failed to activate subscription", result.error);
+              
+              if (token && chatId) {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chat_id: chatId,
+                    text: "❌ عذراً، حدث خطأ أثناء تفعيل الاشتراك. سيتم المحاولة مرة أخرى تلقائياً. إذا استمرت المشكلة، يرجى التواصل مع الدعم.",
+                  }),
+                });
+              }
+              
+              return c.text("Internal Server Error", 500);
+            }
+            
+            return c.text("OK", 200);
+          } catch (error) {
+            logger?.error("❌ [Telegram Stars] Error handling payment", error);
+            return c.text("Internal Server Error", 500);
+          }
+        },
+      },
       // This API route is used to register the Mastra workflow (inngest function) on the inngest server
       {
         path: "/api/inngest",

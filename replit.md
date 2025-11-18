@@ -1,8 +1,11 @@
 # Overview
 
-This is a Mastra-based AI agent system built with TypeScript, featuring a Telegram bot that performs phone number lookups across multiple databases. The project demonstrates enterprise-grade agent and workflow orchestration using the Mastra framework, with support for multiple LLM providers (OpenAI, Groq, OpenRouter), workflow execution via Inngest, and PostgreSQL for persistent storage.
+This is a Mastra-based AI agent system built with TypeScript, featuring a Telegram bot that performs phone number lookups with a dynamic subscription system. The project demonstrates enterprise-grade agent and workflow orchestration using the Mastra framework, with support for multiple LLM providers (OpenAI, Groq, OpenRouter), Telegram Stars payment integration, and MySQL for persistent storage.
 
-The system is designed to receive Telegram messages, extract phone numbers, search them across Facebook and Contacts databases, and return formatted results in Arabic.
+The system uses a single unified database with dynamic table access based on subscription type:
+- **Regular users**: Search only in facebook_accounts table
+- **VIP users**: Search in all available tables (facebook_accounts, contacts, and any future tables)
+- **Payments**: Integrated with Telegram Stars for automatic subscription activation
 
 # User Preferences
 
@@ -59,15 +62,63 @@ API-based triggers route external events to workflows:
 - **Slack Triggers**: Framework for Slack integration (registered but not actively used)
 - **Inngest Event Routing**: API routes automatically convert to Inngest event triggers in the middleware layer
 
+## Payment Integration
+
+### Telegram Stars
+The system integrates with Telegram's built-in payment system (Telegram Stars) for subscription management:
+
+#### Payment Webhooks
+1. **Pre-checkout Handler** (`/webhooks/telegram/pre_checkout`)
+   - Validates payment requests before processing
+   - Automatically approves all valid pre-checkout queries
+   - Returns approval to Telegram API via `answerPreCheckoutQuery`
+
+2. **Successful Payment Handler** (`/webhooks/telegram/payment`)
+   - Processes successful payments automatically
+   - Extracts subscription type from `invoice_payload`:
+     - Contains 'vip' → VIP subscription
+     - Contains 'regular' → Regular subscription
+   - Determines subscription duration (1, 3, 6, or 12 months)
+   - Calls `addSubscription()` to activate/update user subscription
+   - Sends confirmation message with subscription details in Arabic
+
+#### Payment Flow
+```
+User initiates payment → Telegram sends pre_checkout_query 
+→ System approves → User completes payment 
+→ Telegram sends successful_payment → System activates subscription 
+→ Confirmation sent to user
+```
+
+#### Subscription Activation
+- Subscriptions are immediately activated upon successful payment
+- System updates `user_subscriptions` table with:
+  - Telegram user ID
+  - Username
+  - Subscription type (vip/regular)
+  - Start and end dates
+  - Active status
+- User receives instant access to search features based on subscription level
+
 ## Data Storage
 
-### PostgreSQL Database
-- **Shared Storage Instance**: Single PostgreSQL connection pool managed by `@mastra/pg`
-- **Workflow State**: Stores workflow execution snapshots, step results, and suspend/resume state
-- **Phone Number Databases**: Two tables for lookup operations:
+### MySQL Database (Unified)
+- **Single Database Architecture**: All users (VIP and Regular) use the same database
+- **Dynamic Table Access**: Access control based on subscription type via `TABLE_CONFIG`
+  - Regular users: `facebook_accounts` table only
+  - VIP users: `facebook_accounts` + `contacts` + future tables
+- **Connection Pool**: Single MySQL connection pool managed by `dbPool`
+- **Key Tables**:
+  - `user_subscriptions`: Stores all subscription information (VIP and Regular)
   - `facebook_accounts`: Contains Facebook user data (name, phone, email, location, etc.)
-  - `contacts`: Contains contact information
-- **Connection String**: Configured via `DATABASE_URL` environment variable
+  - `contacts`: Contains contact information (VIP only)
+- **Extensibility**: New tables can be added to `TABLE_CONFIG.VIP_TABLES` for future expansion
+- **Connection**: Configured via `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` environment variables
+
+### PostgreSQL (Workflow Storage)
+- `@mastra/pg` used only for workflow state management
+- Stores workflow execution snapshots, step results, and suspend/resume state
+- Configured via `DATABASE_URL` environment variable
 
 ### LibSQL (Optional)
 - `@mastra/libsql` package available for SQLite-compatible embedded storage

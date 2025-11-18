@@ -1,11 +1,12 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { RowDataPacket } from "mysql2/promise";
-import { isVIPUser, vipPool, regularPool } from "../config/database";
+import { dbPool, getTablesForUser } from "../config/database";
 
 /**
- * Phone Lookup Tool - Multi-Database Support
- * Searches for phone numbers in VIP or Regular databases based on user type
+ * Phone Lookup Tool - Dynamic Table Search
+ * - Regular users: Search only in facebook_accounts table
+ * - VIP users: Search in all available tables (facebook_accounts, contacts, etc.)
  */
 
 // Normalize phone number to standard format
@@ -61,7 +62,7 @@ function phoneVariants(p: string): Set<string> {
 export const phoneLookupTool = createTool({
   id: "phone-lookup",
   
-  description: "Search for phone numbers in databases. Regular users search ONLY in facebook_accounts. VIP users search in ALL databases (facebook_accounts AND contacts).",
+  description: "Search for phone numbers in database tables. Regular users search ONLY in facebook_accounts. VIP users search in ALL tables (facebook_accounts, contacts, and any future tables).",
   
   inputSchema: z.object({
     phone: z.string().describe("Phone number to search for (supports various formats: +20, 00, 0, etc.)"),
@@ -92,7 +93,6 @@ export const phoneLookupTool = createTool({
   execute: async ({ context, mastra, runtimeContext }) => {
     const logger = mastra?.getLogger();
     
-    // Get telegramUserId from runtime context
     const telegramUserId = runtimeContext?.get("telegramUserId") as number | undefined;
     
     if (!telegramUserId || typeof telegramUserId !== 'number') {
@@ -115,10 +115,8 @@ export const phoneLookupTool = createTool({
       return { userType: 'unknown', facebook: [], contacts: [] };
     }
     
-    // Import hasActiveSubscription
     const { hasActiveSubscription } = await import('../config/database');
     
-    // Check subscription status
     const subscription = await hasActiveSubscription(telegramUserId);
     
     if (!subscription.hasSubscription) {
@@ -128,43 +126,51 @@ export const phoneLookupTool = createTool({
       throw new Error('❌ ليس لديك اشتراك نشط. للاستفادة من خدمة البحث، يرجى الاشتراك أولاً. اتصل بالدعم للحصول على اشتراك VIP أو عادي.');
     }
     
+    if (subscription.subscriptionType !== 'vip' && subscription.subscriptionType !== 'regular') {
+      logger?.error('⚠️ [PhoneLookupTool] Invalid subscription type', { 
+        subscriptionType: subscription.subscriptionType 
+      });
+      throw new Error('❌ خطأ في النظام: نوع اشتراك غير صحيح. يرجى التواصل مع الدعم.');
+    }
+    
     const userType = subscription.subscriptionType === 'vip' ? 'VIP' : 'Regular';
-    const isVIP = subscription.subscriptionType === 'vip';
-    const pool = isVIP ? vipPool : regularPool;
+    const availableTables = getTablesForUser(subscription.subscriptionType);
     
     logger?.info(`👤 [PhoneLookupTool] User type: ${userType}`, { 
       telegramUserId,
-      subscriptionType: subscription.subscriptionType
+      subscriptionType: subscription.subscriptionType,
+      availableTables
     });
     
     try {
       const variantsArray = Array.from(variants);
-      const fbPlaceholders = variantsArray.map(() => '?').join(', ');
+      const placeholders = variantsArray.map(() => '?').join(', ');
       
-      // Search in facebook_accounts table (BOTH Regular and VIP users)
-      const fbQuery = `SELECT * FROM facebook_accounts WHERE phone IN (${fbPlaceholders})`;
-      logger?.info('🔍 [PhoneLookupTool] Querying facebook_accounts table');
-      const [fbRows] = await pool.query<RowDataPacket[]>(fbQuery, variantsArray);
-      
+      let fbRows: RowDataPacket[] = [];
       let contactsRows: RowDataPacket[] = [];
       
-      // Search in contacts table ONLY for VIP users
-      if (isVIP) {
+      if (availableTables.includes('facebook_accounts')) {
+        const fbQuery = `SELECT * FROM facebook_accounts WHERE phone IN (${placeholders})`;
+        logger?.info('🔍 [PhoneLookupTool] Querying facebook_accounts table');
+        const [rows] = await dbPool.query<RowDataPacket[]>(fbQuery, variantsArray);
+        fbRows = rows;
+      }
+      
+      if (availableTables.includes('contacts')) {
         const contactsQuery = `
           SELECT * FROM contacts 
-          WHERE phone IN (${fbPlaceholders}) OR phone2 IN (${fbPlaceholders})
+          WHERE phone IN (${placeholders}) OR phone2 IN (${placeholders})
         `;
-        logger?.info('🔍 [PhoneLookupTool] Querying contacts table (VIP only)');
-        const [rows] = await pool.query<RowDataPacket[]>(contactsQuery, [...variantsArray, ...variantsArray]);
+        logger?.info('🔍 [PhoneLookupTool] Querying contacts table');
+        const [rows] = await dbPool.query<RowDataPacket[]>(contactsQuery, [...variantsArray, ...variantsArray]);
         contactsRows = rows;
-      } else {
-        logger?.info('⏭️ [PhoneLookupTool] Skipping contacts table (Regular user)');
       }
       
       logger?.info('✅ [PhoneLookupTool] Search completed', { 
         userType,
         facebookResults: fbRows.length,
-        contactsResults: contactsRows.length
+        contactsResults: contactsRows.length,
+        searchedTables: availableTables
       });
       
       return {
