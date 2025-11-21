@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "bash"]
+modules = ["bash", "nodejs-22"]
 
 [agent]
 stack = "AGENT_STACK"
@@ -74,10 +74,10 @@ waitForPort = 5000
 name = "Start inngest server"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "automations"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "./scripts/inngest.sh"
 waitForPort = 3000
-
-[workflows.workflow.metadata]
-outputType = "automations"
