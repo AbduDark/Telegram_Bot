@@ -9,6 +9,33 @@
 - ⚡ **سريع وآمن**: باستخدام MySQL وتقنيات حديثة
 - 🛠️ **سهل الإعداد**: سكريبت setup تفاعلي
 - 🌐 **دعم العربية**: واجهة وتوثيق باللغة العربية
+- 🚀 **وضعان للتشغيل**: Development (مع Mastra) و Production (بدون Mastra)
+
+---
+
+## 🎯 أوضاع التشغيل
+
+### 🔧 Development Mode (مع Mastra)
+- Mastra Playground UI على بورت 5000
+- أدوات التطوير والاختبار
+- مراقبة مباشرة للـ Agents والـ Workflows
+- مناسب للتطوير والتجريب
+
+```bash
+npm run dev
+```
+
+### 🚀 Production Mode (بدون Mastra)
+- خادم Telegram مباشر (Express + Webhook)
+- أخف وأسرع في الاستهلاك
+- لا يحتوي على Playground UI
+- مناسب للنشر على السيرفر
+
+```bash
+npm start
+# أو
+npm run start:prod
+```
 
 ---
 
@@ -42,12 +69,19 @@ node setup.js
 
 ### 3. التشغيل
 
+**Development (مع Mastra Playground):**
 ```bash
-# التشغيل العادي
 npm run dev
+```
 
-# أو باستخدام PM2
-pm2 start ecosystem.config.js
+**Production (بدون Mastra):**
+```bash
+npm start
+```
+
+**مع PM2:**
+```bash
+pm2 start ecosystem.config.cjs
 ```
 
 ---
@@ -57,8 +91,12 @@ pm2 start ecosystem.config.js
 ### للإعداد السريع
 📖 [`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md) - دليل الإعداد الكامل خطوة بخطوة
 
-### للنشر على سيرفر
+### للنشر على سيرفر (Production)
+🌙 [`dark_install.md`](dark_install.md) - **دليل التثبيت الشامل على VPS/Dedicated Server**
 🚀 [`docs/UBUNTU_DEPLOYMENT_GUIDE.md`](docs/UBUNTU_DEPLOYMENT_GUIDE.md) - دليل النشر على Ubuntu Server
+
+### نظام الاشتراكات
+💳 [`docs/SUBSCRIPTION_SYSTEM.md`](docs/SUBSCRIPTION_SYSTEM.md) - إدارة اشتراكات VIP والعادي
 
 ---
 

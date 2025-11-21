@@ -1,11 +1,35 @@
 # Overview
 
-This is a Mastra-based AI agent system built with TypeScript, featuring a Telegram bot that performs phone number lookups with a dynamic subscription system. The project demonstrates enterprise-grade agent and workflow orchestration using the Mastra framework, with support for multiple LLM providers (OpenAI, Groq, OpenRouter), Telegram Stars payment integration, and MySQL for persistent storage.
+This is a Mastra-based AI agent system built with TypeScript, featuring a Telegram bot that performs phone number lookups with a dynamic subscription system. The project supports **two deployment modes**:
+
+1. **Development Mode** (with Mastra): Full Mastra playground, agents, workflows, and monitoring tools for development and testing
+2. **Production Mode** (without Mastra): Lightweight Express server with direct Telegram webhook handling for production deployment on VPS/dedicated servers
 
 The system uses a single unified database with dynamic table access based on subscription type:
 - **Regular users**: Search only in facebook_accounts table
 - **VIP users**: Search in all available tables (facebook_accounts, contacts, and any future tables)
 - **Payments**: Integrated with Telegram Stars for automatic subscription activation
+
+## Deployment Modes
+
+### Development Mode (`npm run dev`)
+- **Mastra Playground UI** on port 5000
+- Full agent and workflow monitoring
+- Real-time debugging and testing tools
+- Inngest workflow orchestration
+- Best for: Local development, testing, and experimentation
+
+### Production Mode (`npm start` or `npm run start:prod`)
+- **Lightweight Express server** with Telegram webhooks
+- Direct bot API integration (node-telegram-bot-api)
+- No Mastra UI overhead
+- Optimized for production deployment
+- Best for: VPS, dedicated servers, and production environments
+
+### Architecture Files
+- **Development**: Uses Mastra framework (`src/mastra/` directory)
+- **Production**: Uses standalone server (`src/production-server.ts` + `src/bot/` handlers)
+- **Shared**: Database layer (`src/mastra/config/database.ts`) used by both modes
 
 # User Preferences
 
