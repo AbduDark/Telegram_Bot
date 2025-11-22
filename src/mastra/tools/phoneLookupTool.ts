@@ -101,11 +101,21 @@ export const phoneLookupTool = createTool({
       throw new Error('❌ خطأ في النظام: لم يتم العثور على معرف المستخدم. يرجى المحاولة مرة أخرى.');
     }
     
-    const searchTerm = context.phone.trim();
+    let searchTerm = context.phone.trim();
     
     if (!searchTerm) {
       logger?.warn('⚠️ [PhoneLookupTool] Empty search term');
       throw new Error('⚠️ الرجاء إدخال رقم هاتف للبحث.');
+    }
+    
+    // Smart Egyptian phone number normalization
+    // If the number starts with 0 and is 11 digits, add 20 prefix
+    if (searchTerm.startsWith('0') && searchTerm.length === 11) {
+      searchTerm = '20' + searchTerm.substring(1);
+      logger?.info('📞 [PhoneLookupTool] Auto-converted Egyptian number', { 
+        original: context.phone.trim(),
+        converted: searchTerm
+      });
     }
     
     logger?.info('🔧 [PhoneLookupTool] Starting PARTIAL search', { 
