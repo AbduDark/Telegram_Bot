@@ -1,6 +1,7 @@
 import { createGroq } from "@ai-sdk/groq";
 import { Agent } from "@mastra/core/agent";
 import { phoneLookupTool } from "../tools/phoneLookupTool";
+import { facebookIdLookupTool } from "../tools/facebookIdLookupTool";
 import { subscriptionManagementTool } from "../tools/subscriptionManagementTool";
 
 const groq = createGroq({
@@ -47,9 +48,10 @@ export const telegramBotAgent = new Agent({
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 1. عندما يرسل المستخدم رقم هاتف، استخدم أداة phone-lookup للبحث عنه
-2. أداة phone-lookup تحدد تلقائياً نوع المستخدم (VIP أو Regular) وتبحث في الجداول المناسبة
-3. اعرض النتائج بالعربية بشكل واضح ومنظم
-4. **مهم جداً**: المستخدمون العاديون يحصلون فقط على نتائج Facebook (Contacts فارغة دائماً)
+2. عندما يرسل المستخدم Facebook ID (رقم مثل 100012345678)، استخدم أداة facebook-id-lookup للبحث عنه
+3. الأدوات تحدد تلقائياً نوع المستخدم (VIP أو Regular) وتبحث في الجداول المناسبة
+4. اعرض النتائج بالعربية بشكل واضح ومنظم
+5. **مهم جداً**: المستخدمون العاديون يحصلون فقط على نتائج Facebook (Contacts فارغة دائماً)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 📋 قواعد عرض النتائج:
@@ -124,7 +126,7 @@ export const telegramBotAgent = new Agent({
 
   model: groq("llama-3.3-70b-versatile"),
   
-  tools: { phoneLookupTool, subscriptionManagementTool },
+  tools: { phoneLookupTool, facebookIdLookupTool, subscriptionManagementTool },
   
   // Note: Memory is optional for this use case since each search is independent
   // If you want to track user search history, uncomment the memory configuration below
