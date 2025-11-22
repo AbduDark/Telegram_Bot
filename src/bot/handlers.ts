@@ -1,5 +1,5 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { lookupPhoneNumber } from './phone-lookup';
+import { lookupPhoneNumber, lookupFacebookId } from './phone-lookup';
 import { formatResponse } from './formatter';
 
 export async function handleTelegramMessage(
@@ -133,7 +133,21 @@ ${subscription.subscriptionType === 'vip'
     if (phonePattern.test(text)) {
       await bot.sendMessage(chatId, '🔍 جاري البحث عن الرقم...', { parse_mode: 'HTML' });
 
-      const result = await lookupPhoneNumber(text, userId);
+      let result;
+      
+      // Determine if it's a Facebook ID or phone number
+      // Facebook IDs typically start with 100 and are longer than 14 digits
+      const cleanedText = text.replace(/[^\d]/g, '');
+      const isFacebookId = cleanedText.startsWith('100') && cleanedText.length > 14;
+      
+      if (isFacebookId) {
+        console.log(`🔍 [Handler] Detected Facebook ID: ${text}`);
+        result = await lookupFacebookId(text, userId);
+      } else {
+        console.log(`📱 [Handler] Detected phone number: ${text}`);
+        result = await lookupPhoneNumber(text, userId);
+      }
+      
       const response = formatResponse(result);
 
       await bot.sendMessage(chatId, response, { parse_mode: 'HTML' });

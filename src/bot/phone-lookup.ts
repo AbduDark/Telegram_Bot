@@ -72,6 +72,71 @@ export interface PhoneLookupResult {
   contacts: ContactResult[];
 }
 
+export async function lookupFacebookId(
+  facebookId: string,
+  telegramUserId: number
+): Promise<PhoneLookupResult> {
+  console.log(`🔍 [FacebookIdLookup] Starting lookup for user ${telegramUserId}`);
+  
+  const subscription = await hasActiveSubscription(telegramUserId);
+  
+  if (!subscription.hasSubscription) {
+    console.log('⚠️  [FacebookIdLookup] No active subscription');
+    return {
+      userType: 'no_subscription',
+      facebook: [],
+      contacts: []
+    };
+  }
+
+  const userType = subscription.subscriptionType || 'regular';
+  const searchTerm = facebookId.trim();
+
+  console.log(`📝 [FacebookIdLookup] User type: ${userType}, Searching for ID: ${searchTerm}`);
+
+  const facebookResults: FacebookResult[] = [];
+
+  try {
+    const likePattern = `%${searchTerm}%`;
+    
+    const facebookQuery = `
+      SELECT id, facebook_id, phone, name, facebook_url, email, location, job, gender
+      FROM facebook_accounts
+      WHERE facebook_id LIKE ?
+      LIMIT 100
+    `;
+    
+    console.log(`🔍 [FacebookIdLookup] Querying Facebook with pattern:`, likePattern);
+    const [fbRows] = await facebookPool.query<RowDataPacket[]>(facebookQuery, [likePattern]);
+    
+    fbRows.forEach((row: any) => {
+      facebookResults.push({
+        id: row.id,
+        facebook_id: row.facebook_id,
+        phone: row.phone,
+        name: row.name,
+        facebook_url: row.facebook_url,
+        email: row.email,
+        location: row.location,
+        job: row.job,
+        gender: row.gender
+      });
+    });
+
+    console.log(`✅ [FacebookIdLookup] Found ${facebookResults.length} Facebook results`);
+
+    return {
+      userType: userType as 'vip' | 'regular',
+      facebook: facebookResults,
+      contacts: [] // Facebook ID search doesn't search in contacts
+    };
+
+  } catch (error) {
+    console.error('❌ [FacebookIdLookup] Database error:', error);
+    throw new Error('فشل البحث في قاعدة البيانات');
+  }
+}
+
 export async function lookupPhoneNumber(
   phone: string,
   telegramUserId: number
@@ -90,25 +155,38 @@ export async function lookupPhoneNumber(
   }
 
   const userType = subscription.subscriptionType || 'regular';
-  const variants = phoneVariants(phone);
-  const phoneList = Array.from(variants);
+  
+  // Generate multiple search variants for Egyptian numbers
+  const originalSearchTerm = phone.trim();
+  const searchVariants: string[] = [originalSearchTerm];
+  
+  // If starts with 0, add variants with 20, 020, +20
+  if (originalSearchTerm.startsWith('0') && originalSearchTerm.length >= 10) {
+    const withoutZero = originalSearchTerm.substring(1);
+    searchVariants.push('20' + withoutZero);      // 01234567890 -> 201234567890
+    searchVariants.push('020' + withoutZero);     // 01234567890 -> 0201234567890
+    searchVariants.push('+20' + withoutZero);     // 01234567890 -> +201234567890
+  }
 
-  console.log(`📝 [PhoneLookup] User type: ${userType}, Phone variants:`, phoneList);
+  console.log(`📝 [PhoneLookup] User type: ${userType}, Search variants:`, searchVariants);
 
   const facebookResults: FacebookResult[] = [];
   const contactResults: ContactResult[] = [];
 
   try {
-    const placeholders = phoneList.map(() => '?').join(',');
+    // Build OR conditions for all search variants using LIKE
+    const conditions = searchVariants.map(() => 'phone LIKE ?').join(' OR ');
+    const patterns = searchVariants.map(v => `%${v}%`);
     
     const facebookQuery = `
       SELECT id, facebook_id, phone, name, facebook_url, email, location, job, gender
       FROM facebook_accounts
-      WHERE phone IN (${placeholders})
-      LIMIT 50
+      WHERE ${conditions}
+      LIMIT 100
     `;
     
-    const [fbRows] = await facebookPool.query<RowDataPacket[]>(facebookQuery, phoneList);
+    console.log(`🔍 [PhoneLookup] Querying Facebook with patterns:`, patterns);
+    const [fbRows] = await facebookPool.query<RowDataPacket[]>(facebookQuery, patterns);
     
     fbRows.forEach((row: any) => {
       facebookResults.push({
@@ -127,15 +205,23 @@ export async function lookupPhoneNumber(
     console.log(`✅ [PhoneLookup] Found ${facebookResults.length} Facebook results`);
 
     if (userType === 'vip') {
+      // Build OR conditions for all search variants (for both phone and phone2)
+      const contactConditions = searchVariants.map(() => '(phone LIKE ? OR phone2 LIKE ?)').join(' OR ');
+      const contactPatterns: string[] = [];
+      searchVariants.forEach(v => {
+        contactPatterns.push(`%${v}%`);
+        contactPatterns.push(`%${v}%`);
+      });
+      
       const contactQuery = `
         SELECT id, name, address, phone, phone2
         FROM contacts
-        WHERE phone IN (${placeholders}) OR phone2 IN (${placeholders})
-        LIMIT 50
+        WHERE ${contactConditions}
+        LIMIT 100
       `;
       
-      const allPhoneParams = [...phoneList, ...phoneList];
-      const [contactRows] = await contactsPool.query<RowDataPacket[]>(contactQuery, allPhoneParams);
+      console.log(`🔍 [PhoneLookup] Querying Contacts with patterns:`, contactPatterns);
+      const [contactRows] = await contactsPool.query<RowDataPacket[]>(contactQuery, contactPatterns);
       
       contactRows.forEach((row: any) => {
         contactResults.push({
