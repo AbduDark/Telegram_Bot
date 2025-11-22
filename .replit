@@ -31,6 +31,10 @@ localPort = 8289
 externalPort = 4200
 
 [[ports]]
+localPort = 37649
+externalPort = 5000
+
+[[ports]]
 localPort = 46069
 externalPort = 3003
 
@@ -63,11 +67,11 @@ name = "Start application"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "webview"
+outputType = "automations"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm run dev"
+args = "mastra dev"
 waitForPort = 5000
 
 [[workflows.workflow]]
