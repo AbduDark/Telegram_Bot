@@ -86,6 +86,26 @@ API-based triggers route external events to workflows:
 - **Slack Triggers**: Framework for Slack integration (registered but not actively used)
 - **Inngest Event Routing**: API routes automatically convert to Inngest event triggers in the middleware layer
 
+### Automatic Webhook Setup
+The system automatically configures Telegram webhooks on server startup using environment variables:
+
+- **Environment Variables**:
+  - `TELEGRAM_BOT_TOKEN` (required): Telegram bot authentication token
+  - `TELEGRAM_WEBHOOK_URL` (optional): Custom webhook URL with highest priority
+  - `REPLIT_DEV_DOMAIN` (optional): Automatically constructs webhook URL for Replit environment
+
+- **Implementation**:
+  - **Mastra Mode** (`src/mastra/index.ts`): Calls `setupTelegramWebhook()` function on startup, configures webhook to `https://DOMAIN/webhooks/telegram/action`
+  - **Production Mode** (`src/production-server.ts`): Calls `setupWebhookAutomatically()` function within server.listen callback, configures webhook to `https://DOMAIN/webhook`
+
+- **Behavior**:
+  - Webhook setup executes automatically when server starts
+  - If `TELEGRAM_BOT_TOKEN` is missing, setup is skipped with warning message
+  - Success: Logs webhook URL, pending updates count, and max connections
+  - Failure: Logs error and suggests manual setup via `./scripts/setup-webhook.sh`
+
+- **Allowed Updates**: Configured to receive `message`, `callback_query`, and `pre_checkout_query` events
+
 ## Payment Integration
 
 ### Telegram Stars
