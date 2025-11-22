@@ -6,10 +6,10 @@ import { dbPool, getTablesForUser } from "../config/database";
 export const facebookIdLookupTool = createTool({
   id: "facebook-id-lookup",
   
-  description: "Search for Facebook accounts by Facebook ID (numeric ID like 100012345678). Regular users and VIP users can both search in facebook_accounts table.",
+  description: "Search for Facebook accounts by Facebook ID using PARTIAL MATCH. Searches for any facebook_id that contains the search term (e.g., searching '1000' returns all IDs with '1000' anywhere). Regular users and VIP users can both search in facebook_accounts table.",
   
   inputSchema: z.object({
-    facebookId: z.string().describe("Facebook ID to search for (numeric ID, e.g., 100012345678)"),
+    facebookId: z.string().describe("Facebook ID or partial Facebook ID to search for (e.g., '1000', '12345', etc.). Will find all matching results."),
   }),
   
   outputSchema: z.object({
@@ -38,17 +38,17 @@ export const facebookIdLookupTool = createTool({
       throw new Error('❌ خطأ في النظام: لم يتم العثور على معرف المستخدم. يرجى المحاولة مرة أخرى.');
     }
     
-    logger?.info('🔧 [FacebookIdLookupTool] Starting execution', { 
-      facebookId: context.facebookId,
+    const searchTerm = context.facebookId.trim();
+    
+    if (!searchTerm) {
+      logger?.warn('⚠️ [FacebookIdLookupTool] Empty search term');
+      throw new Error('⚠️ الرجاء إدخال Facebook ID للبحث.');
+    }
+    
+    logger?.info('🔧 [FacebookIdLookupTool] Starting PARTIAL search', { 
+      searchTerm,
       telegramUserId 
     });
-    
-    const facebookId = context.facebookId.trim();
-    
-    if (!facebookId) {
-      logger?.warn('⚠️ [FacebookIdLookupTool] Empty Facebook ID provided');
-      return { userType: 'unknown', results: [], totalResults: 0 };
-    }
     
     const { hasActiveSubscription } = await import('../config/database');
     
@@ -81,24 +81,26 @@ export const facebookIdLookupTool = createTool({
       let results: RowDataPacket[] = [];
       
       if (availableTables.includes('facebook_accounts')) {
+        const likePattern = `%${searchTerm}%`;
+        
         const query = `
           SELECT * FROM facebook_accounts 
-          WHERE facebook_id = ?
-          LIMIT 50
+          WHERE facebook_id LIKE ?
+          LIMIT 100
         `;
         
-        logger?.info('🔍 [FacebookIdLookupTool] Querying facebook_accounts table', {
-          facebookId
+        logger?.info('🔍 [FacebookIdLookupTool] Querying facebook_accounts with LIKE pattern', {
+          pattern: likePattern
         });
         
-        const [rows] = await dbPool.query<RowDataPacket[]>(query, [facebookId]);
+        const [rows] = await dbPool.query<RowDataPacket[]>(query, [likePattern]);
         results = rows;
       }
       
-      logger?.info('✅ [FacebookIdLookupTool] Search completed', { 
+      logger?.info('✅ [FacebookIdLookupTool] PARTIAL search completed', { 
         userType,
         totalResults: results.length,
-        facebookId
+        searchTerm
       });
       
       return {

@@ -62,10 +62,10 @@ function phoneVariants(p: string): Set<string> {
 export const phoneLookupTool = createTool({
   id: "phone-lookup",
   
-  description: "Search for phone numbers in database tables. Regular users search ONLY in facebook_accounts. VIP users search in ALL tables (facebook_accounts, contacts, and any future tables).",
+  description: "Search for phone numbers in database tables using PARTIAL MATCH. Searches for any phone that contains the search term (e.g., searching '20' returns all phones with '20' anywhere). Regular users search ONLY in facebook_accounts. VIP users search in ALL tables (facebook_accounts, contacts, and any future tables).",
   
   inputSchema: z.object({
-    phone: z.string().describe("Phone number to search for (supports various formats: +20, 00, 0, etc.)"),
+    phone: z.string().describe("Phone number or partial phone number to search for (e.g., '20', '0', '012', etc.). Will find all matching results."),
   }),
   
   outputSchema: z.object({
@@ -88,6 +88,7 @@ export const phoneLookupTool = createTool({
       phone: z.string().nullable(),
       phone2: z.string().nullable(),
     })),
+    totalResults: z.number(),
   }),
   
   execute: async ({ context, mastra, runtimeContext }) => {
@@ -100,20 +101,17 @@ export const phoneLookupTool = createTool({
       throw new Error('❌ خطأ في النظام: لم يتم العثور على معرف المستخدم. يرجى المحاولة مرة أخرى.');
     }
     
-    logger?.info('🔧 [PhoneLookupTool] Starting execution', { 
-      phone: context.phone,
+    const searchTerm = context.phone.trim();
+    
+    if (!searchTerm) {
+      logger?.warn('⚠️ [PhoneLookupTool] Empty search term');
+      throw new Error('⚠️ الرجاء إدخال رقم هاتف للبحث.');
+    }
+    
+    logger?.info('🔧 [PhoneLookupTool] Starting PARTIAL search', { 
+      searchTerm,
       telegramUserId 
     });
-    
-    const variants = phoneVariants(context.phone);
-    logger?.info('📝 [PhoneLookupTool] Generated phone variants', { 
-      variants: Array.from(variants) 
-    });
-    
-    if (variants.size === 0) {
-      logger?.warn('⚠️ [PhoneLookupTool] No valid phone variants generated');
-      return { userType: 'unknown', facebook: [], contacts: [] };
-    }
     
     const { hasActiveSubscription } = await import('../config/database');
     
@@ -143,40 +141,53 @@ export const phoneLookupTool = createTool({
     });
     
     try {
-      const variantsArray = Array.from(variants);
-      const placeholders = variantsArray.map(() => '?').join(', ');
+      const likePattern = `%${searchTerm}%`;
       
       let fbRows: RowDataPacket[] = [];
       let contactsRows: RowDataPacket[] = [];
       
       if (availableTables.includes('facebook_accounts')) {
-        const fbQuery = `SELECT * FROM facebook_accounts WHERE phone IN (${placeholders})`;
-        logger?.info('🔍 [PhoneLookupTool] Querying facebook_accounts table');
-        const [rows] = await dbPool.query<RowDataPacket[]>(fbQuery, variantsArray);
+        const fbQuery = `
+          SELECT * FROM facebook_accounts 
+          WHERE phone LIKE ? 
+          LIMIT 100
+        `;
+        logger?.info('🔍 [PhoneLookupTool] Querying facebook_accounts with LIKE pattern', {
+          pattern: likePattern
+        });
+        const [rows] = await dbPool.query<RowDataPacket[]>(fbQuery, [likePattern]);
         fbRows = rows;
       }
       
       if (availableTables.includes('contacts')) {
         const contactsQuery = `
           SELECT * FROM contacts 
-          WHERE phone IN (${placeholders}) OR phone2 IN (${placeholders})
+          WHERE phone LIKE ? OR phone2 LIKE ?
+          LIMIT 100
         `;
-        logger?.info('🔍 [PhoneLookupTool] Querying contacts table');
-        const [rows] = await dbPool.query<RowDataPacket[]>(contactsQuery, [...variantsArray, ...variantsArray]);
+        logger?.info('🔍 [PhoneLookupTool] Querying contacts with LIKE pattern', {
+          pattern: likePattern
+        });
+        const [rows] = await dbPool.query<RowDataPacket[]>(contactsQuery, [likePattern, likePattern]);
         contactsRows = rows;
       }
       
-      logger?.info('✅ [PhoneLookupTool] Search completed', { 
+      const totalResults = fbRows.length + contactsRows.length;
+      
+      logger?.info('✅ [PhoneLookupTool] PARTIAL search completed', { 
         userType,
         facebookResults: fbRows.length,
         contactsResults: contactsRows.length,
-        searchedTables: availableTables
+        totalResults,
+        searchedTables: availableTables,
+        searchTerm
       });
       
       return {
         userType,
         facebook: fbRows as any[],
         contacts: contactsRows as any[],
+        totalResults,
       };
     } catch (error) {
       logger?.error('❌ [PhoneLookupTool] Error executing search:', error);
