@@ -18,7 +18,7 @@ async function setupTelegramWebhook() {
   const TELEGRAM_WEBHOOK_URL = process.env.TELEGRAM_WEBHOOK_URL;
 
   const WEBHOOK_URL = TELEGRAM_WEBHOOK_URL || 
-    (REPLIT_DEV_DOMAIN ? `https://${REPLIT_DEV_DOMAIN}/webhooks/telegram/action` : null);
+    (REPLIT_DEV_DOMAIN ? `https://${REPLIT_DEV_DOMAIN}/api/webhooks/telegram/action` : null);
 
   if (!TELEGRAM_BOT_TOKEN) {
     console.log('⚠️  [Webhook Setup] TELEGRAM_BOT_TOKEN not configured, skipping webhook setup');

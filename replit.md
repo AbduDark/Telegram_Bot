@@ -95,8 +95,9 @@ The system automatically configures Telegram webhooks on server startup using en
   - `REPLIT_DEV_DOMAIN` (optional): Automatically constructs webhook URL for Replit environment
 
 - **Implementation**:
-  - **Mastra Mode** (`src/mastra/index.ts`): Calls `setupTelegramWebhook()` function on startup, configures webhook to `https://DOMAIN/webhooks/telegram/action`
+  - **Mastra Mode** (`src/mastra/index.ts`): Calls `setupTelegramWebhook()` function on startup, configures webhook to `https://DOMAIN/api/webhooks/telegram/action`
   - **Production Mode** (`src/production-server.ts`): Calls `setupWebhookAutomatically()` function within server.listen callback, configures webhook to `https://DOMAIN/webhook`
+  - **Important**: In Mastra, all API routes automatically get `/api/` prefix, so the handler at `/webhooks/telegram/action` is accessible at `/api/webhooks/telegram/action`
 
 - **Behavior**:
   - Webhook setup executes automatically when server starts
