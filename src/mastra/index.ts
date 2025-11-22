@@ -12,6 +12,73 @@ import { sharedPostgresStorage } from "./storage";
 import { inngest, inngestServe } from "./inngest";
 import { telegramBotAgent } from "./agents/telegramBotAgent";
 
+async function setupTelegramWebhook() {
+  const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+  const REPLIT_DEV_DOMAIN = process.env.REPLIT_DEV_DOMAIN;
+  const TELEGRAM_WEBHOOK_URL = process.env.TELEGRAM_WEBHOOK_URL;
+
+  const WEBHOOK_URL = TELEGRAM_WEBHOOK_URL || 
+    (REPLIT_DEV_DOMAIN ? `https://${REPLIT_DEV_DOMAIN}/webhooks/telegram/action` : null);
+
+  if (!TELEGRAM_BOT_TOKEN) {
+    console.log('⚠️  [Webhook Setup] TELEGRAM_BOT_TOKEN not configured, skipping webhook setup');
+    return false;
+  }
+
+  if (!WEBHOOK_URL) {
+    console.log('⚠️  [Webhook Setup] No webhook URL available');
+    console.log('💡 Set TELEGRAM_WEBHOOK_URL or ensure REPLIT_DEV_DOMAIN is available');
+    return false;
+  }
+
+  try {
+    console.log('🔧 [Webhook Setup] Configuring Telegram webhook automatically...');
+    console.log(`📍 [Webhook Setup] URL: ${WEBHOOK_URL}`);
+
+    const response = await fetch(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: WEBHOOK_URL,
+          max_connections: 40,
+          allowed_updates: ['message', 'callback_query', 'pre_checkout_query'],
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (data.ok) {
+      console.log('✅ [Webhook Setup] Configured successfully!');
+      
+      const infoResponse = await fetch(
+        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo`
+      );
+      const webhookInfo = await infoResponse.json();
+      
+      console.log('📡 [Webhook Setup] Info:', {
+        url: webhookInfo.result?.url,
+        pending_updates: webhookInfo.result?.pending_update_count,
+        max_connections: webhookInfo.result?.max_connections,
+      });
+      
+      return true;
+    } else {
+      console.error('❌ [Webhook Setup] Failed:', data.description);
+      console.log('💡 You can manually run: ./scripts/setup-webhook.sh');
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ [Webhook Setup] Error:', error instanceof Error ? error.message : error);
+    console.log('💡 You can manually run: ./scripts/setup-webhook.sh');
+    return false;
+  }
+}
+
 class ProductionPinoLogger extends MastraLogger {
   protected logger: pino.Logger;
 
@@ -403,3 +470,7 @@ if (Object.keys(mastra.getAgents()).length > 1) {
     "More than 1 agents found. Currently, more than 1 agents are not supported in the UI, since doing so will cause app state to be inconsistent.",
   );
 }
+
+setupTelegramWebhook().catch((error) => {
+  console.error('❌ [Webhook Setup] Unexpected error during webhook setup:', error);
+});

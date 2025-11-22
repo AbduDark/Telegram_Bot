@@ -13,7 +13,11 @@ const HOST = process.env.HOST || '0.0.0.0';
 app.use(express.json());
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const WEBHOOK_URL = process.env.TELEGRAM_WEBHOOK_URL;
+const REPLIT_DEV_DOMAIN = process.env.REPLIT_DEV_DOMAIN;
+const TELEGRAM_WEBHOOK_URL = process.env.TELEGRAM_WEBHOOK_URL;
+
+const WEBHOOK_URL = TELEGRAM_WEBHOOK_URL || 
+  (REPLIT_DEV_DOMAIN ? `https://${REPLIT_DEV_DOMAIN}/webhook` : null);
 
 if (!TELEGRAM_BOT_TOKEN) {
   console.error('❌ TELEGRAM_BOT_TOKEN is required');
@@ -23,6 +27,59 @@ if (!TELEGRAM_BOT_TOKEN) {
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
 
 console.log('🤖 [Production Server] Initializing Telegram Bot...');
+
+async function setupWebhookAutomatically() {
+  if (!WEBHOOK_URL) {
+    console.log('⚠️  [Webhook] No webhook URL configured');
+    console.log('💡 Set TELEGRAM_WEBHOOK_URL or REPLIT_DEV_DOMAIN in environment variables');
+    return false;
+  }
+
+  try {
+    console.log('🔧 [Webhook] Setting up webhook automatically...');
+    console.log(`📍 [Webhook] URL: ${WEBHOOK_URL}`);
+
+    const response = await fetch(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: WEBHOOK_URL,
+          max_connections: 40,
+          allowed_updates: ['message', 'callback_query'],
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (data.ok) {
+      console.log('✅ [Webhook] Configured successfully!');
+      
+      const infoResponse = await fetch(
+        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo`
+      );
+      const webhookInfo = await infoResponse.json();
+      
+      console.log('📡 [Webhook] Info:', {
+        url: webhookInfo.result?.url,
+        pending_update_count: webhookInfo.result?.pending_update_count,
+        max_connections: webhookInfo.result?.max_connections,
+      });
+      
+      return true;
+    } else {
+      console.error('❌ [Webhook] Setup failed:', data.description);
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ [Webhook] Error during setup:', error instanceof Error ? error.message : error);
+    return false;
+  }
+}
 
 app.get('/', (req, res) => {
   res.json({
@@ -75,12 +132,19 @@ const server = app.listen(PORT, HOST, async () => {
   console.log('\n🔍 Testing database connections...\n');
   await testConnections();
   
-  if (WEBHOOK_URL) {
-    console.log(`\n📡 Webhook URL: ${WEBHOOK_URL}`);
-    console.log('💡 Run setup-webhook.sh to configure Telegram webhook\n');
-  } else {
-    console.log('\n⚠️  TELEGRAM_WEBHOOK_URL not set. Please configure webhook manually.\n');
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🌐 Setting up Telegram Webhook');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  
+  const webhookSuccess = await setupWebhookAutomatically();
+  
+  if (!webhookSuccess && WEBHOOK_URL) {
+    console.log('\n💡 Tip: You can also run ./scripts/setup-webhook.sh manually\n');
   }
+  
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('✅ Server is ready to receive messages!');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 });
 
 process.on('SIGTERM', () => {
