@@ -6,10 +6,10 @@ import { dbPool, getTablesForUser } from "../config/database";
 export const facebookIdLookupTool = createTool({
   id: "facebook-id-lookup",
   
-  description: "Search for Facebook accounts by Facebook ID using PARTIAL MATCH. Searches for any facebook_id that contains the search term (e.g., searching '1000' returns all IDs with '1000' anywhere). Regular users and VIP users can both search in facebook_accounts table.",
+  description: "Search for Facebook accounts by Facebook ID using EXACT MATCH (fast). Searches for the exact facebook_id provided. Regular users and VIP users can both search in facebook_accounts table.",
   
   inputSchema: z.object({
-    facebookId: z.string().describe("Facebook ID or partial Facebook ID to search for (e.g., '1000', '12345', etc.). Will find all matching results."),
+    facebookId: z.string().describe("Facebook ID to search for (e.g., '100007800548113'). Must be exact ID."),
   }),
   
   outputSchema: z.object({
@@ -81,23 +81,22 @@ export const facebookIdLookupTool = createTool({
       let results: RowDataPacket[] = [];
       
       if (availableTables.includes('facebook_accounts')) {
-        const likePattern = `%${searchTerm}%`;
-        
+        // Use EXACT MATCH for Facebook ID - much faster than LIKE
         const query = `
           SELECT * FROM facebook_accounts 
-          WHERE facebook_id LIKE ?
-          LIMIT 100
+          WHERE facebook_id = ?
+          LIMIT 1
         `;
         
-        logger?.info('🔍 [FacebookIdLookupTool] Querying facebook_accounts with LIKE pattern', {
-          pattern: likePattern
+        logger?.info('🔍 [FacebookIdLookupTool] Querying facebook_accounts with exact match', {
+          facebookId: searchTerm
         });
         
-        const [rows] = await dbPool.query<RowDataPacket[]>(query, [likePattern]);
+        const [rows] = await dbPool.query<RowDataPacket[]>(query, [searchTerm]);
         results = rows;
       }
       
-      logger?.info('✅ [FacebookIdLookupTool] PARTIAL search completed', { 
+      logger?.info('✅ [FacebookIdLookupTool] Exact match search completed', { 
         userType,
         totalResults: results.length,
         searchTerm

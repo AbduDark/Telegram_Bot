@@ -62,10 +62,10 @@ function phoneVariants(p: string): Set<string> {
 export const phoneLookupTool = createTool({
   id: "phone-lookup",
   
-  description: "Search for phone numbers in database tables using PARTIAL MATCH. Searches for any phone that contains the search term (e.g., searching '20' returns all phones with '20' anywhere). Regular users search ONLY in facebook_accounts. VIP users search in ALL tables (facebook_accounts, contacts, and any future tables).",
+  description: "Search for phone numbers in database tables using EXACT MATCH (fast). Automatically tries multiple Egyptian number formats (0, 20, 020, +20). Regular users search ONLY in facebook_accounts. VIP users search in ALL tables (facebook_accounts, contacts, and any future tables).",
   
   inputSchema: z.object({
-    phone: z.string().describe("Phone number or partial phone number to search for (e.g., '20', '0', '012', etc.). Will find all matching results."),
+    phone: z.string().describe("Phone number to search for (e.g., '01234567890', '201234567890'). Automatically tries multiple formats for exact match."),
   }),
   
   outputSchema: z.object({
@@ -108,7 +108,7 @@ export const phoneLookupTool = createTool({
       throw new Error('⚠️ الرجاء إدخال رقم هاتف للبحث.');
     }
     
-    // Generate multiple search variants for Egyptian numbers
+    // Generate search variants for Egyptian numbers - EXACT MATCH for speed
     const searchVariants: string[] = [originalSearchTerm];
     
     // If starts with 0, add variants with 20, 020, +20
@@ -118,8 +118,15 @@ export const phoneLookupTool = createTool({
       searchVariants.push('020' + withoutZero);     // 01234567890 -> 0201234567890
       searchVariants.push('+20' + withoutZero);     // 01234567890 -> +201234567890
     }
+    // If starts with 20, also try with 0
+    else if (originalSearchTerm.startsWith('20') && originalSearchTerm.length >= 12) {
+      const withoutCountryCode = originalSearchTerm.substring(2);
+      searchVariants.push('0' + withoutCountryCode);      // 201234567890 -> 01234567890
+      searchVariants.push('020' + withoutCountryCode);    // 201234567890 -> 0201234567890
+      searchVariants.push('+20' + withoutCountryCode);    // 201234567890 -> +201234567890
+    }
     
-    logger?.info('🔧 [PhoneLookupTool] Starting multi-variant search', { 
+    logger?.info('🔧 [PhoneLookupTool] Starting exact-match search', { 
       original: originalSearchTerm,
       variants: searchVariants,
       telegramUserId 
@@ -157,46 +164,41 @@ export const phoneLookupTool = createTool({
       let contactsRows: RowDataPacket[] = [];
       
       if (availableTables.includes('facebook_accounts')) {
-        // Build OR conditions for all search variants
-        const conditions = searchVariants.map(() => 'phone LIKE ?').join(' OR ');
-        const patterns = searchVariants.map(v => `%${v}%`);
+        // Use IN for EXACT MATCH - much faster than LIKE
+        const placeholders = searchVariants.map(() => '?').join(',');
         
         const fbQuery = `
           SELECT * FROM facebook_accounts 
-          WHERE ${conditions}
+          WHERE phone IN (${placeholders})
           LIMIT 100
         `;
-        logger?.info('🔍 [PhoneLookupTool] Querying facebook_accounts with multiple patterns', {
-          patterns
+        logger?.info('🔍 [PhoneLookupTool] Querying facebook_accounts with exact match', {
+          variants: searchVariants
         });
-        const [rows] = await dbPool.query<RowDataPacket[]>(fbQuery, patterns);
+        const [rows] = await dbPool.query<RowDataPacket[]>(fbQuery, searchVariants);
         fbRows = rows;
       }
       
       if (availableTables.includes('contacts')) {
-        // Build OR conditions for all search variants (for both phone and phone2)
-        const conditions = searchVariants.map(() => '(phone LIKE ? OR phone2 LIKE ?)').join(' OR ');
-        const patterns: string[] = [];
-        searchVariants.forEach(v => {
-          patterns.push(`%${v}%`);
-          patterns.push(`%${v}%`);
-        });
+        // Use IN for EXACT MATCH - much faster than LIKE
+        const placeholders = searchVariants.map(() => '?').join(',');
         
         const contactsQuery = `
           SELECT * FROM contacts 
-          WHERE ${conditions}
+          WHERE phone IN (${placeholders}) OR phone2 IN (${placeholders})
           LIMIT 100
         `;
-        logger?.info('🔍 [PhoneLookupTool] Querying contacts with multiple patterns', {
-          patterns
+        const allPhoneParams = [...searchVariants, ...searchVariants];
+        logger?.info('🔍 [PhoneLookupTool] Querying contacts with exact match', {
+          variants: searchVariants
         });
-        const [rows] = await dbPool.query<RowDataPacket[]>(contactsQuery, patterns);
+        const [rows] = await dbPool.query<RowDataPacket[]>(contactsQuery, allPhoneParams);
         contactsRows = rows;
       }
       
       const totalResults = fbRows.length + contactsRows.length;
       
-      logger?.info('✅ [PhoneLookupTool] Multi-variant search completed', { 
+      logger?.info('✅ [PhoneLookupTool] Exact match search completed', { 
         userType,
         facebookResults: fbRows.length,
         contactsResults: contactsRows.length,

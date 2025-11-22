@@ -97,17 +97,16 @@ export async function lookupFacebookId(
   const facebookResults: FacebookResult[] = [];
 
   try {
-    const likePattern = `%${searchTerm}%`;
-    
+    // Use EXACT MATCH for Facebook ID - much faster than LIKE
     const facebookQuery = `
       SELECT id, facebook_id, phone, name, facebook_url, email, location, job, gender
       FROM facebook_accounts
-      WHERE facebook_id LIKE ?
-      LIMIT 100
+      WHERE facebook_id = ?
+      LIMIT 1
     `;
     
-    console.log(`🔍 [FacebookIdLookup] Querying Facebook with pattern:`, likePattern);
-    const [fbRows] = await facebookPool.query<RowDataPacket[]>(facebookQuery, [likePattern]);
+    console.log(`🔍 [FacebookIdLookup] Querying Facebook with exact match:`, searchTerm);
+    const [fbRows] = await facebookPool.query<RowDataPacket[]>(facebookQuery, [searchTerm]);
     
     fbRows.forEach((row: any) => {
       facebookResults.push({
@@ -156,7 +155,7 @@ export async function lookupPhoneNumber(
 
   const userType = subscription.subscriptionType || 'regular';
   
-  // Generate multiple search variants for Egyptian numbers
+  // Generate search variants for Egyptian numbers - EXACT MATCH for speed
   const originalSearchTerm = phone.trim();
   const searchVariants: string[] = [originalSearchTerm];
   
@@ -167,6 +166,13 @@ export async function lookupPhoneNumber(
     searchVariants.push('020' + withoutZero);     // 01234567890 -> 0201234567890
     searchVariants.push('+20' + withoutZero);     // 01234567890 -> +201234567890
   }
+  // If starts with 20, also try with 0
+  else if (originalSearchTerm.startsWith('20') && originalSearchTerm.length >= 12) {
+    const withoutCountryCode = originalSearchTerm.substring(2);
+    searchVariants.push('0' + withoutCountryCode);      // 201234567890 -> 01234567890
+    searchVariants.push('020' + withoutCountryCode);    // 201234567890 -> 0201234567890
+    searchVariants.push('+20' + withoutCountryCode);    // 201234567890 -> +201234567890
+  }
 
   console.log(`📝 [PhoneLookup] User type: ${userType}, Search variants:`, searchVariants);
 
@@ -174,19 +180,18 @@ export async function lookupPhoneNumber(
   const contactResults: ContactResult[] = [];
 
   try {
-    // Build OR conditions for all search variants using LIKE
-    const conditions = searchVariants.map(() => 'phone LIKE ?').join(' OR ');
-    const patterns = searchVariants.map(v => `%${v}%`);
+    // Use IN for EXACT MATCH - much faster than LIKE
+    const placeholders = searchVariants.map(() => '?').join(',');
     
     const facebookQuery = `
       SELECT id, facebook_id, phone, name, facebook_url, email, location, job, gender
       FROM facebook_accounts
-      WHERE ${conditions}
+      WHERE phone IN (${placeholders})
       LIMIT 100
     `;
     
-    console.log(`🔍 [PhoneLookup] Querying Facebook with patterns:`, patterns);
-    const [fbRows] = await facebookPool.query<RowDataPacket[]>(facebookQuery, patterns);
+    console.log(`🔍 [PhoneLookup] Querying Facebook with exact match:`, searchVariants);
+    const [fbRows] = await facebookPool.query<RowDataPacket[]>(facebookQuery, searchVariants);
     
     fbRows.forEach((row: any) => {
       facebookResults.push({
@@ -205,23 +210,19 @@ export async function lookupPhoneNumber(
     console.log(`✅ [PhoneLookup] Found ${facebookResults.length} Facebook results`);
 
     if (userType === 'vip') {
-      // Build OR conditions for all search variants (for both phone and phone2)
-      const contactConditions = searchVariants.map(() => '(phone LIKE ? OR phone2 LIKE ?)').join(' OR ');
-      const contactPatterns: string[] = [];
-      searchVariants.forEach(v => {
-        contactPatterns.push(`%${v}%`);
-        contactPatterns.push(`%${v}%`);
-      });
+      // Use IN for EXACT MATCH - much faster than LIKE
+      const placeholders = searchVariants.map(() => '?').join(',');
       
       const contactQuery = `
         SELECT id, name, address, phone, phone2
         FROM contacts
-        WHERE ${contactConditions}
+        WHERE phone IN (${placeholders}) OR phone2 IN (${placeholders})
         LIMIT 100
       `;
       
-      console.log(`🔍 [PhoneLookup] Querying Contacts with patterns:`, contactPatterns);
-      const [contactRows] = await contactsPool.query<RowDataPacket[]>(contactQuery, contactPatterns);
+      const allPhoneParams = [...searchVariants, ...searchVariants];
+      console.log(`🔍 [PhoneLookup] Querying Contacts with exact match:`, searchVariants);
+      const [contactRows] = await contactsPool.query<RowDataPacket[]>(contactQuery, allPhoneParams);
       
       contactRows.forEach((row: any) => {
         contactResults.push({
