@@ -3,14 +3,14 @@ import { PhoneLookupResult } from './phone-lookup';
 export function formatResponse(result: PhoneLookupResult): string {
   if (result.userType === 'no_subscription') {
     return `
-❌ ليس لديك اشتراك نشط
+🔒 <b>اشتراك غير نشط</b>
 
-للاشتراك في البوت والحصول على صلاحية البحث:
-💳 تواصل مع الدعم للاشتراك
+للحصول على صلاحية البحث:
+💳 تواصل مع الدعم
 
-الأنواع المتاحة:
-👑 VIP - البحث في جميع القواعد
-👤 عادي - البحث في Facebook فقط
+<b>الاشتراكات المتاحة:</b>
+👑 VIP - جميع القواعد
+👤 عادي - Facebook فقط
 `;
   }
 
@@ -20,73 +20,62 @@ export function formatResponse(result: PhoneLookupResult): string {
 
   if (!hasFacebookResults && !hasContactResults) {
     return `
-❌ لم يتم العثور على نتائج لهذا الرقم
+❌ <b>لا توجد نتائج</b>
 
 💡 تأكد من:
-• إدخال الرقم بشكل صحيح
-• الرقم موجود في قاعدة البيانات
+• كتابة الرقم بشكل صحيح
+• الرقم موجود بالقاعدة
 
-${!isVIP ? '\n💎 الترقية إلى VIP للبحث في قواعد بيانات إضافية!' : ''}
+${!isVIP ? '💎 <b>VIP:</b> نتائج أكثر!' : ''}
 `;
   }
 
   let response = '';
   
-  const subscriptionBadge = isVIP ? '👑 VIP' : '👤 عادي';
-  response += `━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-  response += `🔍 نتائج البحث (${subscriptionBadge})\n`;
-  response += `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  const badge = isVIP ? '👑' : '👤';
+  response += `<b>🔍 النتائج ${badge}</b>\n`;
+  response += `━━━━━━━━━━━━━━━━\n\n`;
 
   if (hasFacebookResults) {
-    response += `╔═══════════════════════════╗\n`;
-    response += `║  📘 نتائج Facebook (${result.facebook.length})    ║\n`;
-    response += `╚═══════════════════════════╝\n\n`;
+    response += `<b>📘 Facebook</b> (${result.facebook.length})\n`;
+    response += `━━━━━━━━━━━━━━━━\n`;
 
     result.facebook.forEach((fb, index) => {
-      response += `🔹 نتيجة ${index + 1}:\n`;
-      if (fb.name) response += `👤 الاسم: ${fb.name}\n`;
-      if (fb.phone) response += `📱 الهاتف: ${fb.phone}\n`;
-      if (fb.facebook_id) response += `🆔 معرف Facebook: ${fb.facebook_id}\n`;
-      if (fb.facebook_url) response += `🔗 رابط الحساب: ${fb.facebook_url}\n`;
-      if (fb.email) response += `✉️ البريد الإلكتروني: ${fb.email}\n`;
-      if (fb.location) response += `📍 الموقع: ${fb.location}\n`;
-      if (fb.job) response += `💼 الوظيفة: ${fb.job}\n`;
-      if (fb.gender) response += `⚧️ النوع: ${fb.gender === 'male' ? 'ذكر' : 'أنثى'}\n`;
-      response += `\n`;
+      response += `\n<b>${index + 1}.</b>\n`;
+      if (fb.name) response += `👤 ${fb.name}\n`;
+      if (fb.phone) response += `📱 ${fb.phone}\n`;
+      if (fb.facebook_id) response += `🆔 ${fb.facebook_id}\n`;
+      if (fb.facebook_url) response += `🔗 ${fb.facebook_url}\n`;
+      if (fb.email) response += `✉️ ${fb.email}\n`;
+      if (fb.location) response += `📍 ${fb.location}\n`;
+      if (fb.job) response += `💼 ${fb.job}\n`;
+      if (fb.gender) response += `⚧️ ${fb.gender === 'male' ? 'ذكر' : 'أنثى'}\n`;
     });
   }
 
   if (isVIP) {
-    response += `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    response += `\n━━━━━━━━━━━━━━━━\n`;
     
     if (hasContactResults) {
-      response += `╔═══════════════════════════╗\n`;
-      response += `║  📇 نتائج Contacts (${result.contacts.length})   ║\n`;
-      response += `╚═══════════════════════════╝\n\n`;
+      response += `<b>📇 Contacts</b> (${result.contacts.length})\n`;
+      response += `━━━━━━━━━━━━━━━━\n`;
 
       result.contacts.forEach((contact, index) => {
-        response += `🔹 نتيجة ${index + 1}:\n`;
-        if (contact.name) response += `🏢 الاسم: ${contact.name}\n`;
-        if (contact.address) response += `📍 العنوان: ${contact.address}\n`;
-        if (contact.phone) response += `📞 الهاتف الأول: ${contact.phone}\n`;
-        if (contact.phone2) response += `📞 الهاتف الثاني: ${contact.phone2}\n`;
-        response += `\n`;
+        response += `\n<b>${index + 1}.</b>\n`;
+        if (contact.name) response += `🏢 ${contact.name}\n`;
+        if (contact.address) response += `📍 ${contact.address}\n`;
+        if (contact.phone) response += `📞 ${contact.phone}\n`;
+        if (contact.phone2) response += `📞 ${contact.phone2}\n`;
       });
     } else {
-      response += `╔═══════════════════════════╗\n`;
-      response += `║  📇 نتائج Contacts        ║\n`;
-      response += `╚═══════════════════════════╝\n\n`;
-      response += `ℹ️ لم يتم العثور على نتائج في Contacts\n\n`;
+      response += `<b>📇 Contacts</b>\nℹ️ لا توجد نتائج\n`;
     }
   } else {
-    response += `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    response += `💡 <b>للحصول على نتائج أكثر:</b>\n`;
-    response += `قم بالترقية إلى اشتراك VIP! 👑\n\n`;
-    response += `<b>مميزات VIP:</b>\n`;
-    response += `✓ البحث في قاعدة Contacts\n`;
-    response += `✓ نتائج أشمل وأكثر تفصيلاً\n`;
-    response += `✓ أولوية في الدعم الفني\n\n`;
-    response += `📞 للاشتراك: تواصل مع الدعم\n`;
+    response += `\n━━━━━━━━━━━━━━━━\n`;
+    response += `💎 <b>VIP للمزيد!</b>\n`;
+    response += `✓ نتائج Contacts\n`;
+    response += `✓ نتائج شاملة\n`;
+    response += `✓ دعم أولوية\n`;
   }
 
   return response;
