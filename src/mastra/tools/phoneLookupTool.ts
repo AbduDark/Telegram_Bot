@@ -101,25 +101,27 @@ export const phoneLookupTool = createTool({
       throw new Error('❌ خطأ في النظام: لم يتم العثور على معرف المستخدم. يرجى المحاولة مرة أخرى.');
     }
     
-    let searchTerm = context.phone.trim();
+    const originalSearchTerm = context.phone.trim();
     
-    if (!searchTerm) {
+    if (!originalSearchTerm) {
       logger?.warn('⚠️ [PhoneLookupTool] Empty search term');
       throw new Error('⚠️ الرجاء إدخال رقم هاتف للبحث.');
     }
     
-    // Smart Egyptian phone number normalization
-    // If the number starts with 0 and is 11 digits, add 20 prefix
-    if (searchTerm.startsWith('0') && searchTerm.length === 11) {
-      searchTerm = '20' + searchTerm.substring(1);
-      logger?.info('📞 [PhoneLookupTool] Auto-converted Egyptian number', { 
-        original: context.phone.trim(),
-        converted: searchTerm
-      });
+    // Generate multiple search variants for Egyptian numbers
+    const searchVariants: string[] = [originalSearchTerm];
+    
+    // If starts with 0, add variants with 20, 020, +20
+    if (originalSearchTerm.startsWith('0') && originalSearchTerm.length >= 10) {
+      const withoutZero = originalSearchTerm.substring(1);
+      searchVariants.push('20' + withoutZero);      // 01234567890 -> 201234567890
+      searchVariants.push('020' + withoutZero);     // 01234567890 -> 0201234567890
+      searchVariants.push('+20' + withoutZero);     // 01234567890 -> +201234567890
     }
     
-    logger?.info('🔧 [PhoneLookupTool] Starting PARTIAL search', { 
-      searchTerm,
+    logger?.info('🔧 [PhoneLookupTool] Starting multi-variant search', { 
+      original: originalSearchTerm,
+      variants: searchVariants,
       telegramUserId 
     });
     
@@ -151,46 +153,57 @@ export const phoneLookupTool = createTool({
     });
     
     try {
-      const likePattern = `%${searchTerm}%`;
-      
       let fbRows: RowDataPacket[] = [];
       let contactsRows: RowDataPacket[] = [];
       
       if (availableTables.includes('facebook_accounts')) {
+        // Build OR conditions for all search variants
+        const conditions = searchVariants.map(() => 'phone LIKE ?').join(' OR ');
+        const patterns = searchVariants.map(v => `%${v}%`);
+        
         const fbQuery = `
           SELECT * FROM facebook_accounts 
-          WHERE phone LIKE ? 
+          WHERE ${conditions}
           LIMIT 100
         `;
-        logger?.info('🔍 [PhoneLookupTool] Querying facebook_accounts with LIKE pattern', {
-          pattern: likePattern
+        logger?.info('🔍 [PhoneLookupTool] Querying facebook_accounts with multiple patterns', {
+          patterns
         });
-        const [rows] = await dbPool.query<RowDataPacket[]>(fbQuery, [likePattern]);
+        const [rows] = await dbPool.query<RowDataPacket[]>(fbQuery, patterns);
         fbRows = rows;
       }
       
       if (availableTables.includes('contacts')) {
+        // Build OR conditions for all search variants (for both phone and phone2)
+        const conditions = searchVariants.map(() => '(phone LIKE ? OR phone2 LIKE ?)').join(' OR ');
+        const patterns: string[] = [];
+        searchVariants.forEach(v => {
+          patterns.push(`%${v}%`);
+          patterns.push(`%${v}%`);
+        });
+        
         const contactsQuery = `
           SELECT * FROM contacts 
-          WHERE phone LIKE ? OR phone2 LIKE ?
+          WHERE ${conditions}
           LIMIT 100
         `;
-        logger?.info('🔍 [PhoneLookupTool] Querying contacts with LIKE pattern', {
-          pattern: likePattern
+        logger?.info('🔍 [PhoneLookupTool] Querying contacts with multiple patterns', {
+          patterns
         });
-        const [rows] = await dbPool.query<RowDataPacket[]>(contactsQuery, [likePattern, likePattern]);
+        const [rows] = await dbPool.query<RowDataPacket[]>(contactsQuery, patterns);
         contactsRows = rows;
       }
       
       const totalResults = fbRows.length + contactsRows.length;
       
-      logger?.info('✅ [PhoneLookupTool] PARTIAL search completed', { 
+      logger?.info('✅ [PhoneLookupTool] Multi-variant search completed', { 
         userType,
         facebookResults: fbRows.length,
         contactsResults: contactsRows.length,
         totalResults,
         searchedTables: availableTables,
-        searchTerm
+        originalSearch: originalSearchTerm,
+        searchVariants
       });
       
       return {
