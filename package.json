@@ -32,9 +32,9 @@
     "@mastra/loggers": "^0.10.19",
     "@mastra/mcp": "^0.14.3",
     "@mastra/pg": "^0.17.8",
-    "ai": "^4.3.16",
+    "ai": "^5.0.98",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2",
+    "express": "^5.1.0",
     "express-rate-limit": "^7.5.1",
     "glob": "^11.0.0",
     "hono": "^4.10.3",
@@ -44,7 +44,7 @@
     "mysql2": "^3.12.0",
     "node-telegram-bot-api": "^0.66.0",
     "tsx": "^4.19.2",
-    "zod": "^3.22.5"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^24.6.2",
