@@ -25,11 +25,23 @@ The system uses a single unified database with dynamic table access based on sub
 - No Mastra UI overhead
 - Optimized for production deployment
 - Best for: VPS, dedicated servers, and production environments
+- **Full Feature Parity**: All features available in both modes
+
+### Production Mode Features (Full List)
+Both development and production modes now support:
+1. **Phone & Facebook ID Lookup** - Search across databases
+2. **Subscription Packages** - 1, 3, 6, 12 months with discounts (10%, 20%, 30%)
+3. **Telegram Stars Payments** - Native payment integration
+4. **Referral System** - Unique codes, 10% discount for new users, 3 bonus searches for referrers
+5. **Search History** - Last 10 searches saved per user
+6. **Free Searches** - 5 free searches for new users
+7. **Smart Notifications** - Subscription expiry reminders
 
 ### Architecture Files
 - **Development**: Uses Mastra framework (`src/mastra/` directory)
 - **Production**: Uses standalone server (`src/production-server.ts` + `src/bot/` handlers)
-- **Shared**: Database layer (`src/mastra/config/database.ts`) used by both modes
+- **Production Database**: `src/bot/database.ts` (independent, mirrors Mastra database functions)
+- **Production Handlers**: `src/bot/handlers.ts` (all commands and payment processing)
 
 # User Preferences
 
