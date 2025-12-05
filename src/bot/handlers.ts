@@ -1,5 +1,5 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { lookupPhoneNumber, lookupFacebookId } from './phone-lookup';
+import { lookupPhoneNumber, lookupFacebookId, SearchAccessType } from './phone-lookup';
 import { formatResponse } from './formatter';
 import { chatWithAI } from './ai-assistant';
 import {
@@ -321,13 +321,29 @@ ${referralLink}
       await registerNewUser(userId, username);
       
       const subscription = await hasActiveSubscription(userId);
+      let accessType: SearchAccessType = 'regular';
       
-      if (!subscription.hasSubscription) {
+      if (subscription.hasSubscription) {
+        accessType = (subscription.subscriptionType as SearchAccessType) || 'regular';
+      } else {
         const referralStats = await getReferralStats(userId);
         if (referralStats && referralStats.bonusSearches > 0) {
           const used = await useBonusSearch(userId);
           if (used.success) {
             await bot.sendMessage(chatId, `🎁 تم استخدام بحث مكافأة (المتبقي: ${used.remaining})`, { parse_mode: 'HTML' });
+            accessType = 'free';
+          } else {
+            await bot.sendMessage(chatId, `
+🔒 <b>انتهت عمليات البحث المجانية</b>
+
+💎 للاستمرار، اشترك الآن:
+/subscribe - اختر باقة
+/packages - عرض الأسعار
+
+🎁 أو شارك كود الإحالة واحصل على عمليات مجانية:
+/referral
+`, { parse_mode: 'HTML' });
+            return;
           }
         } else {
           const freeResult = await useFreeSearch(userId, username);
@@ -345,6 +361,7 @@ ${referralLink}
             return;
           }
           await bot.sendMessage(chatId, `🔍 بحث مجاني (المتبقي: ${freeResult.remaining})`, { parse_mode: 'HTML' });
+          accessType = 'free';
         }
       }
 
@@ -355,11 +372,11 @@ ${referralLink}
       const isFacebookId = cleanedText.startsWith('100') && cleanedText.length > 14;
       
       if (isFacebookId) {
-        console.log(`🔍 [Handler] Detected Facebook ID: ${text}`);
-        result = await lookupFacebookId(text, userId);
+        console.log(`🔍 [Handler] Detected Facebook ID: ${text}, access: ${accessType}`);
+        result = await lookupFacebookId(text, userId, accessType);
       } else {
-        console.log(`📱 [Handler] Detected phone number: ${text}`);
-        result = await lookupPhoneNumber(text, userId);
+        console.log(`📱 [Handler] Detected phone number: ${text}, access: ${accessType}`);
+        result = await lookupPhoneNumber(text, userId, accessType);
       }
       
       const resultsCount = (result.facebook?.length || 0) + (result.contacts?.length || 0);

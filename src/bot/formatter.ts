@@ -1,19 +1,6 @@
 import { PhoneLookupResult } from './phone-lookup';
 
 export function formatResponse(result: PhoneLookupResult): string {
-  if (result.userType === 'no_subscription') {
-    return `
-🔒 <b>اشتراك غير نشط</b>
-
-للحصول على صلاحية البحث:
-💳 تواصل مع الدعم
-
-<b>الاشتراكات المتاحة:</b>
-👑 VIP - جميع القواعد
-👤 عادي - Facebook فقط
-`;
-  }
-
   const hasFacebookResults = result.facebook.length > 0;
   const hasContactResults = result.contacts.length > 0;
   const isVIP = result.userType === 'vip';

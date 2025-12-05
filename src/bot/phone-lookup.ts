@@ -1,9 +1,10 @@
 import { RowDataPacket } from 'mysql2/promise';
 import { 
-  hasActiveSubscription, 
   facebookPool, 
   contactsPool 
 } from './database';
+
+export type SearchAccessType = 'vip' | 'regular' | 'free';
 
 function normalizePhone(s: string): string {
   if (!s) return '';
@@ -67,29 +68,19 @@ interface ContactResult {
 }
 
 export interface PhoneLookupResult {
-  userType: 'vip' | 'regular' | 'no_subscription';
+  userType: 'vip' | 'regular';
   facebook: FacebookResult[];
   contacts: ContactResult[];
 }
 
 export async function lookupFacebookId(
   facebookId: string,
-  telegramUserId: number
+  telegramUserId: number,
+  accessType: SearchAccessType = 'regular'
 ): Promise<PhoneLookupResult> {
-  console.log(`🔍 [FacebookIdLookup] Starting lookup for user ${telegramUserId}`);
+  console.log(`🔍 [FacebookIdLookup] Starting lookup for user ${telegramUserId}, access: ${accessType}`);
   
-  const subscription = await hasActiveSubscription(telegramUserId);
-  
-  if (!subscription.hasSubscription) {
-    console.log('⚠️  [FacebookIdLookup] No active subscription');
-    return {
-      userType: 'no_subscription',
-      facebook: [],
-      contacts: []
-    };
-  }
-
-  const userType = subscription.subscriptionType || 'regular';
+  const userType = accessType === 'free' ? 'regular' : accessType;
   const searchTerm = facebookId.trim();
 
   console.log(`📝 [FacebookIdLookup] User type: ${userType}, Searching for ID: ${searchTerm}`);
@@ -138,22 +129,12 @@ export async function lookupFacebookId(
 
 export async function lookupPhoneNumber(
   phone: string,
-  telegramUserId: number
+  telegramUserId: number,
+  accessType: SearchAccessType = 'regular'
 ): Promise<PhoneLookupResult> {
-  console.log(`🔍 [PhoneLookup] Starting lookup for user ${telegramUserId}`);
+  console.log(`🔍 [PhoneLookup] Starting lookup for user ${telegramUserId}, access: ${accessType}`);
   
-  const subscription = await hasActiveSubscription(telegramUserId);
-  
-  if (!subscription.hasSubscription) {
-    console.log('⚠️  [PhoneLookup] No active subscription');
-    return {
-      userType: 'no_subscription',
-      facebook: [],
-      contacts: []
-    };
-  }
-
-  const userType = subscription.subscriptionType || 'regular';
+  const userType = accessType === 'free' ? 'regular' : accessType;
   
   // Generate search variants for Egyptian numbers - EXACT MATCH for speed
   const originalSearchTerm = phone.trim();
