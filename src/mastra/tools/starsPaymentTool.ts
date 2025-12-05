@@ -1,33 +1,83 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
-import { PAYMENT_CONFIG } from "../config/database";
+import { PAYMENT_CONFIG, getPackageDetails, PackageDuration, SubscriptionType, getUserReferralDiscount, markReferralDiscountUsed } from "../config/database";
 
-/**
- * Telegram Stars Payment Tool
- * Sends invoice to user for subscription payment
- */
 export const starsPaymentTool = createTool({
   id: "stars-payment",
   
-  description: "Send a Telegram Stars payment invoice to the user for subscription. Use this when user wants to subscribe or upgrade their subscription.",
+  description: `Send a Telegram Stars payment invoice for subscription. Use this when:
+- User wants to subscribe (regular or VIP)
+- User asks about subscription prices/packages
+- User wants to upgrade or renew subscription
+
+Available packages:
+- Regular: 1 month (100⭐), 3 months (270⭐ -10%), 6 months (480⭐ -20%), 12 months (840⭐ -30%)
+- VIP: 1 month (250⭐), 3 months (675⭐ -10%), 6 months (1200⭐ -20%), 12 months (2100⭐ -30%)
+
+Note: Users with referral codes get an additional 10% discount on their first subscription!`,
   
   inputSchema: z.object({
-    subscriptionType: z.enum(['vip', 'regular']).describe("Type of subscription: 'vip' for VIP access (250 stars), 'regular' for basic access (100 stars)"),
-    chatId: z.number().describe("Telegram chat ID to send the invoice to"),
+    action: z.enum(['send_invoice', 'show_packages']).describe("Action: send_invoice (send payment invoice), show_packages (display all available packages)"),
+    subscriptionType: z.enum(['vip', 'regular']).optional().describe("Type of subscription: 'vip' or 'regular' (required for send_invoice)"),
+    duration: z.enum(['1month', '3months', '6months', '12months']).optional().default('1month').describe("Package duration: 1month, 3months, 6months, or 12months"),
+    chatId: z.number().optional().describe("Telegram chat ID to send the invoice to (required for send_invoice)"),
+    telegramUserId: z.number().optional().describe("Telegram user ID to check for referral discount"),
   }),
   
   outputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
     invoiceSent: z.boolean().optional(),
+    data: z.any().optional(),
   }),
   
   execute: async ({ context, mastra }) => {
     const logger = mastra?.getLogger();
-    logger?.info('💳 [StarsPaymentTool] Starting payment invoice', { 
+    logger?.info('💳 [StarsPaymentTool] Starting execution', { 
+      action: context.action,
       subscriptionType: context.subscriptionType,
-      chatId: context.chatId
+      duration: context.duration
     });
+    
+    if (context.action === 'show_packages') {
+      const packages = PAYMENT_CONFIG.PACKAGES;
+      
+      let message = `💰 **باقات الاشتراك المتاحة**\n\n`;
+      
+      message += `━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `📱 **الاشتراك العادي** (Facebook فقط)\n`;
+      message += `━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `• 1 شهر: ${packages.regular['1month'].stars} ⭐\n`;
+      message += `• 3 شهور: ${packages.regular['3months'].stars} ⭐ (خصم 10%)\n`;
+      message += `• 6 شهور: ${packages.regular['6months'].stars} ⭐ (خصم 20%)\n`;
+      message += `• 12 شهر: ${packages.regular['12months'].stars} ⭐ (خصم 30%)\n\n`;
+      
+      message += `━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `👑 **اشتراك VIP** (جميع قواعد البيانات)\n`;
+      message += `━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `• 1 شهر: ${packages.vip['1month'].stars} ⭐\n`;
+      message += `• 3 شهور: ${packages.vip['3months'].stars} ⭐ (خصم 10%)\n`;
+      message += `• 6 شهور: ${packages.vip['6months'].stars} ⭐ (خصم 20%)\n`;
+      message += `• 12 شهر: ${packages.vip['12months'].stars} ⭐ (خصم 30%)\n\n`;
+      
+      message += `🎁 لديك كود إحالة؟ احصل على خصم 10% إضافي!\n\n`;
+      message += `💡 للاشتراك، قل مثلاً:\n`;
+      message += `"أريد اشتراك VIP 3 شهور" أو "اشتراك عادي شهر"`;
+      
+      return {
+        success: true,
+        message,
+        data: { packages }
+      };
+    }
+    
+    if (!context.subscriptionType || !context.chatId) {
+      return {
+        success: false,
+        message: 'يرجى تحديد نوع الاشتراك (عادي أو VIP) ومدته',
+        invoiceSent: false,
+      };
+    }
     
     const token = process.env.TELEGRAM_BOT_TOKEN;
     
@@ -40,16 +90,57 @@ export const starsPaymentTool = createTool({
       };
     }
     
-    const isVIP = context.subscriptionType === 'vip';
-    const starsAmount = isVIP 
-      ? PAYMENT_CONFIG.VIP_SUBSCRIPTION_STARS 
-      : PAYMENT_CONFIG.REGULAR_SUBSCRIPTION_STARS;
+    const duration = (context.duration || '1month') as PackageDuration;
+    const subscriptionType = context.subscriptionType as SubscriptionType;
+    const packageDetails = getPackageDetails(subscriptionType, duration);
     
-    const title = isVIP ? '👑 اشتراك VIP شهري' : '📱 اشتراك عادي شهري';
+    let finalStars = packageDetails.stars;
+    let referralDiscountApplied = false;
+    let totalDiscount = packageDetails.discount;
+    
+    if (context.telegramUserId) {
+      const referralDiscount = await getUserReferralDiscount(context.telegramUserId);
+      if (referralDiscount.hasDiscount) {
+        const referralDiscountAmount = Math.floor(packageDetails.stars * (referralDiscount.discountPercent / 100));
+        finalStars = packageDetails.stars - referralDiscountAmount;
+        referralDiscountApplied = true;
+        totalDiscount = packageDetails.discount + referralDiscount.discountPercent;
+        
+        await markReferralDiscountUsed(context.telegramUserId);
+        
+        logger?.info('🎁 [StarsPaymentTool] Referral discount applied', {
+          originalStars: packageDetails.stars,
+          discountAmount: referralDiscountAmount,
+          finalStars,
+          discountPercent: referralDiscount.discountPercent
+        });
+      }
+    }
+    
+    const isVIP = subscriptionType === 'vip';
+    const monthsText = {
+      '1month': 'شهر واحد',
+      '3months': '3 شهور',
+      '6months': '6 شهور',
+      '12months': '12 شهر'
+    }[duration];
+    
+    const title = isVIP 
+      ? `👑 اشتراك VIP - ${monthsText}` 
+      : `📱 اشتراك عادي - ${monthsText}`;
+      
+    let discountText = '';
+    if (totalDiscount > 0) {
+      discountText = referralDiscountApplied 
+        ? ` (خصم ${packageDetails.discount}% + 10% إحالة)` 
+        : ` (خصم ${packageDetails.discount}%)`;
+    }
+    
     const description = isVIP 
-      ? 'اشتراك VIP يتيح لك البحث في جميع قواعد البيانات (Facebook + Contacts + المزيد)'
-      : 'اشتراك عادي يتيح لك البحث في قاعدة بيانات Facebook فقط';
-    const payload = isVIP ? 'subscription_vip_1month' : 'subscription_regular_1month';
+      ? `اشتراك VIP لمدة ${monthsText}${discountText}\nالبحث في جميع قواعد البيانات (Facebook + Contacts + المزيد)`
+      : `اشتراك عادي لمدة ${monthsText}${discountText}\nالبحث في قاعدة بيانات Facebook فقط`;
+      
+    const payload = `subscription_${subscriptionType}_${duration}`;
     
     try {
       const response = await fetch(`https://api.telegram.org/bot${token}/sendInvoice`, {
@@ -63,7 +154,7 @@ export const starsPaymentTool = createTool({
           provider_token: "",
           currency: "XTR",
           prices: [
-            { label: title, amount: starsAmount }
+            { label: title, amount: finalStars }
           ],
         }),
       });
@@ -71,11 +162,36 @@ export const starsPaymentTool = createTool({
       const data = await response.json();
       
       if (data.ok) {
-        logger?.info('✅ [StarsPaymentTool] Invoice sent successfully');
+        logger?.info('✅ [StarsPaymentTool] Invoice sent successfully', {
+          subscriptionType,
+          duration,
+          originalStars: packageDetails.stars,
+          finalStars,
+          referralDiscountApplied
+        });
+        
+        let successMessage = `✅ تم إرسال فاتورة الدفع بنجاح!\n\n📦 الباقة: ${title}\n💰 المبلغ: ${finalStars} نجمة ⭐`;
+        
+        if (referralDiscountApplied) {
+          successMessage += `\n🎁 تم تطبيق خصم الإحالة 10%!`;
+        }
+        
+        successMessage += `\n\n💡 اضغط على الفاتورة لإتمام الدفع`;
+        
         return {
           success: true,
-          message: `تم إرسال فاتورة الدفع بنجاح! المبلغ: ${starsAmount} نجمة ⭐`,
+          message: successMessage,
           invoiceSent: true,
+          data: {
+            subscriptionType,
+            duration,
+            months: packageDetails.months,
+            originalStars: packageDetails.stars,
+            finalStars,
+            packageDiscount: packageDetails.discount,
+            referralDiscountApplied,
+            totalDiscount
+          }
         };
       } else {
         logger?.error('❌ [StarsPaymentTool] Failed to send invoice', { error: data.description });

@@ -360,7 +360,7 @@ export const mastra = new Mastra({
               return c.text("Bad Request", 400);
             }
             
-            const { addSubscription } = await import('./config/database');
+            const { addSubscription, grantReferralBonus, dbPool } = await import('./config/database');
             
             const invoicePayload = successfulPayment.invoice_payload;
             let subscriptionType: 'vip' | 'regular' = 'regular';
@@ -378,6 +378,33 @@ export const mastra = new Mastra({
             }
             
             const result = await addSubscription(telegramUserId, username, subscriptionType, months);
+            
+            if (result.success) {
+              try {
+                const [referralUse]: any = await dbPool.query(
+                  `SELECT referrer_id, subscription_granted FROM referral_uses 
+                   WHERE referred_user_id = ? AND subscription_granted = FALSE`,
+                  [telegramUserId]
+                );
+                
+                if (Array.isArray(referralUse) && referralUse.length > 0) {
+                  const referrerId = referralUse[0].referrer_id;
+                  await grantReferralBonus(referrerId);
+                  
+                  await dbPool.query(
+                    `UPDATE referral_uses SET subscription_granted = TRUE WHERE referred_user_id = ?`,
+                    [telegramUserId]
+                  );
+                  
+                  logger?.info("🎁 [Telegram Stars] Referral bonus granted", { 
+                    referrerId, 
+                    referredUserId: telegramUserId 
+                  });
+                }
+              } catch (refError) {
+                logger?.warn("⚠️ [Telegram Stars] Error granting referral bonus", refError);
+              }
+            }
             
             const token = process.env.TELEGRAM_BOT_TOKEN;
             

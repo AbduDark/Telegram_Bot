@@ -1,7 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { RowDataPacket } from "mysql2/promise";
-import { dbPool, getTablesForUser, canUserSearch, incrementFreeSearchCount, FREE_SEARCHES_CONFIG, PAYMENT_CONFIG } from "../config/database";
+import { dbPool, getTablesForUser, canUserSearch, incrementFreeSearchCount, FREE_SEARCHES_CONFIG, PAYMENT_CONFIG, saveSearchHistory } from "../config/database";
 
 /**
  * Phone Lookup Tool - Dynamic Table Search
@@ -220,6 +220,9 @@ export const phoneLookupTool = createTool({
         originalSearch: originalSearchTerm,
         searchVariants
       });
+      
+      await saveSearchHistory(telegramUserId, originalSearchTerm, 'phone', totalResults);
+      logger?.info('📜 [PhoneLookupTool] Search saved to history');
       
       return {
         userType,

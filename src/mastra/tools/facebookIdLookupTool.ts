@@ -1,7 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { RowDataPacket } from "mysql2/promise";
-import { dbPool, getTablesForUser, canUserSearch, incrementFreeSearchCount, FREE_SEARCHES_CONFIG, PAYMENT_CONFIG } from "../config/database";
+import { dbPool, getTablesForUser, canUserSearch, incrementFreeSearchCount, FREE_SEARCHES_CONFIG, PAYMENT_CONFIG, saveSearchHistory } from "../config/database";
 
 export const facebookIdLookupTool = createTool({
   id: "facebook-id-lookup",
@@ -115,6 +115,9 @@ export const facebookIdLookupTool = createTool({
         totalResults: results.length,
         searchTerm
       });
+      
+      await saveSearchHistory(telegramUserId, searchTerm, 'facebook_id', results.length);
+      logger?.info('📜 [FacebookIdLookupTool] Search saved to history');
       
       return {
         userType,

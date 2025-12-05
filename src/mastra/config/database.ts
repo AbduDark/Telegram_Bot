@@ -345,13 +345,44 @@ export async function canUserSearch(telegramUserId: number): Promise<{
 }
 
 /**
- * Payment Configuration
+ * Payment Configuration with Multiple Packages
+ * Discounts: 3 months = 10%, 6 months = 20%, 12 months = 30%
  */
 export const PAYMENT_CONFIG = {
   REGULAR_SUBSCRIPTION_STARS: 100,
   VIP_SUBSCRIPTION_STARS: 250,
   SUBSCRIPTION_PERIOD_DAYS: 30,
+  
+  PACKAGES: {
+    regular: {
+      '1month': { months: 1, stars: 100, discount: 0 },
+      '3months': { months: 3, stars: 270, discount: 10 },
+      '6months': { months: 6, stars: 480, discount: 20 },
+      '12months': { months: 12, stars: 840, discount: 30 },
+    },
+    vip: {
+      '1month': { months: 1, stars: 250, discount: 0 },
+      '3months': { months: 3, stars: 675, discount: 10 },
+      '6months': { months: 6, stars: 1200, discount: 20 },
+      '12months': { months: 12, stars: 2100, discount: 30 },
+    },
+  },
+  
+  REFERRAL_BONUS: {
+    REFERRER_FREE_SEARCHES: 3,
+    REFEREE_DISCOUNT_PERCENT: 10,
+  },
 } as const;
+
+export type PackageDuration = '1month' | '3months' | '6months' | '12months';
+export type SubscriptionType = 'vip' | 'regular';
+
+/**
+ * Get package details by type and duration
+ */
+export function getPackageDetails(subscriptionType: SubscriptionType, duration: PackageDuration) {
+  return PAYMENT_CONFIG.PACKAGES[subscriptionType][duration];
+}
 
 /**
  * Store payment record
@@ -394,5 +425,374 @@ export async function getPaymentByChargeId(chargeId: string) {
   } catch (error) {
     console.error('Error getting payment record:', error);
     return null;
+  }
+}
+
+/**
+ * ==========================================
+ * REFERRAL SYSTEM FUNCTIONS
+ * ==========================================
+ */
+
+/**
+ * Generate a unique referral code for a user
+ */
+export function generateReferralCode(telegramUserId: number): string {
+  const base = telegramUserId.toString(36).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `REF${base}${random}`;
+}
+
+/**
+ * Create or get referral code for a user
+ */
+export async function getOrCreateReferralCode(telegramUserId: number, username: string): Promise<{success: boolean, code?: string, error?: any}> {
+  try {
+    const [existing]: any = await dbPool.query(
+      `SELECT referral_code FROM user_referrals WHERE telegram_user_id = ?`,
+      [telegramUserId]
+    );
+    
+    if (Array.isArray(existing) && existing.length > 0) {
+      return { success: true, code: existing[0].referral_code };
+    }
+    
+    const code = generateReferralCode(telegramUserId);
+    
+    await dbPool.query(
+      `INSERT INTO user_referrals (telegram_user_id, username, referral_code, bonus_searches, created_at)
+       VALUES (?, ?, ?, 0, NOW())`,
+      [telegramUserId, username, code]
+    );
+    
+    return { success: true, code };
+  } catch (error) {
+    console.error('Error creating referral code:', error);
+    return { success: false, error };
+  }
+}
+
+/**
+ * Get referral statistics for a user
+ */
+export async function getReferralStats(telegramUserId: number): Promise<{
+  code: string;
+  totalReferrals: number;
+  successfulReferrals: number;
+  bonusSearches: number;
+} | null> {
+  try {
+    const [rows]: any = await dbPool.query(
+      `SELECT referral_code, total_referrals, successful_referrals, bonus_searches 
+       FROM user_referrals WHERE telegram_user_id = ?`,
+      [telegramUserId]
+    );
+    
+    if (Array.isArray(rows) && rows.length > 0) {
+      return {
+        code: rows[0].referral_code,
+        totalReferrals: rows[0].total_referrals || 0,
+        successfulReferrals: rows[0].successful_referrals || 0,
+        bonusSearches: rows[0].bonus_searches || 0,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting referral stats:', error);
+    return null;
+  }
+}
+
+/**
+ * Apply referral code (when new user uses a code)
+ */
+export async function applyReferralCode(
+  newUserTelegramId: number, 
+  newUserUsername: string, 
+  referralCode: string
+): Promise<{success: boolean, referrerId?: number, discount?: number, error?: string}> {
+  try {
+    const [referrer]: any = await dbPool.query(
+      `SELECT telegram_user_id FROM user_referrals WHERE referral_code = ?`,
+      [referralCode]
+    );
+    
+    if (!Array.isArray(referrer) || referrer.length === 0) {
+      return { success: false, error: 'كود الإحالة غير صالح' };
+    }
+    
+    const referrerId = referrer[0].telegram_user_id;
+    
+    if (referrerId === newUserTelegramId) {
+      return { success: false, error: 'لا يمكنك استخدام كود الإحالة الخاص بك' };
+    }
+    
+    const [existingUse]: any = await dbPool.query(
+      `SELECT id FROM referral_uses WHERE referred_user_id = ?`,
+      [newUserTelegramId]
+    );
+    
+    if (Array.isArray(existingUse) && existingUse.length > 0) {
+      return { success: false, error: 'لقد استخدمت كود إحالة من قبل' };
+    }
+    
+    await dbPool.query(
+      `INSERT INTO referral_uses (referrer_id, referred_user_id, referred_username, referral_code, used_at)
+       VALUES (?, ?, ?, ?, NOW())`,
+      [referrerId, newUserTelegramId, newUserUsername, referralCode]
+    );
+    
+    await dbPool.query(
+      `UPDATE user_referrals 
+       SET total_referrals = total_referrals + 1, updated_at = NOW()
+       WHERE telegram_user_id = ?`,
+      [referrerId]
+    );
+    
+    return { 
+      success: true, 
+      referrerId, 
+      discount: PAYMENT_CONFIG.REFERRAL_BONUS.REFEREE_DISCOUNT_PERCENT 
+    };
+  } catch (error) {
+    console.error('Error applying referral code:', error);
+    return { success: false, error: 'حدث خطأ أثناء تطبيق كود الإحالة' };
+  }
+}
+
+/**
+ * Grant bonus to referrer when referred user subscribes
+ */
+export async function grantReferralBonus(referrerId: number): Promise<{success: boolean}> {
+  try {
+    await dbPool.query(
+      `UPDATE user_referrals 
+       SET successful_referrals = successful_referrals + 1,
+           bonus_searches = bonus_searches + ?,
+           updated_at = NOW()
+       WHERE telegram_user_id = ?`,
+      [PAYMENT_CONFIG.REFERRAL_BONUS.REFERRER_FREE_SEARCHES, referrerId]
+    );
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error granting referral bonus:', error);
+    return { success: false };
+  }
+}
+
+/**
+ * Use bonus search from referral rewards
+ */
+export async function useBonusSearch(telegramUserId: number): Promise<{success: boolean, remaining: number}> {
+  try {
+    const [current]: any = await dbPool.query(
+      `SELECT bonus_searches FROM user_referrals WHERE telegram_user_id = ?`,
+      [telegramUserId]
+    );
+    
+    if (!Array.isArray(current) || current.length === 0 || current[0].bonus_searches <= 0) {
+      return { success: false, remaining: 0 };
+    }
+    
+    await dbPool.query(
+      `UPDATE user_referrals SET bonus_searches = bonus_searches - 1, updated_at = NOW()
+       WHERE telegram_user_id = ? AND bonus_searches > 0`,
+      [telegramUserId]
+    );
+    
+    return { success: true, remaining: current[0].bonus_searches - 1 };
+  } catch (error) {
+    console.error('Error using bonus search:', error);
+    return { success: false, remaining: 0 };
+  }
+}
+
+/**
+ * Check if user has a pending referral discount
+ */
+export async function getUserReferralDiscount(telegramUserId: number): Promise<{
+  hasDiscount: boolean;
+  discountPercent: number;
+  referralCode?: string;
+}> {
+  try {
+    const [rows]: any = await dbPool.query(
+      `SELECT referral_code, discount_used FROM referral_uses 
+       WHERE referred_user_id = ? AND discount_used = FALSE`,
+      [telegramUserId]
+    );
+    
+    if (Array.isArray(rows) && rows.length > 0) {
+      return {
+        hasDiscount: true,
+        discountPercent: PAYMENT_CONFIG.REFERRAL_BONUS.REFEREE_DISCOUNT_PERCENT,
+        referralCode: rows[0].referral_code
+      };
+    }
+    
+    return { hasDiscount: false, discountPercent: 0 };
+  } catch (error) {
+    console.error('Error checking referral discount:', error);
+    return { hasDiscount: false, discountPercent: 0 };
+  }
+}
+
+/**
+ * Mark referral discount as used
+ */
+export async function markReferralDiscountUsed(telegramUserId: number): Promise<{success: boolean}> {
+  try {
+    await dbPool.query(
+      `UPDATE referral_uses SET discount_used = TRUE WHERE referred_user_id = ?`,
+      [telegramUserId]
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Error marking discount used:', error);
+    return { success: false };
+  }
+}
+
+/**
+ * ==========================================
+ * SEARCH HISTORY FUNCTIONS
+ * ==========================================
+ */
+
+export interface SearchHistoryEntry {
+  id: number;
+  searchQuery: string;
+  searchType: 'phone' | 'facebook_id';
+  resultsFound: number;
+  searchedAt: Date;
+}
+
+/**
+ * Save a search to history
+ */
+export async function saveSearchHistory(
+  telegramUserId: number,
+  searchQuery: string,
+  searchType: 'phone' | 'facebook_id',
+  resultsFound: number
+): Promise<{success: boolean}> {
+  try {
+    await dbPool.query(
+      `INSERT INTO search_history (telegram_user_id, search_query, search_type, results_found, searched_at)
+       VALUES (?, ?, ?, ?, NOW())`,
+      [telegramUserId, searchQuery, searchType, resultsFound]
+    );
+    
+    await dbPool.query(
+      `DELETE FROM search_history 
+       WHERE telegram_user_id = ? 
+       AND id NOT IN (
+         SELECT id FROM (
+           SELECT id FROM search_history 
+           WHERE telegram_user_id = ? 
+           ORDER BY searched_at DESC 
+           LIMIT 10
+         ) AS recent
+       )`,
+      [telegramUserId, telegramUserId]
+    );
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving search history:', error);
+    return { success: false };
+  }
+}
+
+/**
+ * Get user's search history (last 10 searches)
+ */
+export async function getSearchHistory(telegramUserId: number): Promise<SearchHistoryEntry[]> {
+  try {
+    const [rows]: any = await dbPool.query(
+      `SELECT id, search_query as searchQuery, search_type as searchType, 
+              results_found as resultsFound, searched_at as searchedAt
+       FROM search_history 
+       WHERE telegram_user_id = ?
+       ORDER BY searched_at DESC
+       LIMIT 10`,
+      [telegramUserId]
+    );
+    
+    return Array.isArray(rows) ? rows : [];
+  } catch (error) {
+    console.error('Error getting search history:', error);
+    return [];
+  }
+}
+
+/**
+ * Clear user's search history
+ */
+export async function clearSearchHistory(telegramUserId: number): Promise<{success: boolean, deletedCount: number}> {
+  try {
+    const [result]: any = await dbPool.query(
+      `DELETE FROM search_history WHERE telegram_user_id = ?`,
+      [telegramUserId]
+    );
+    
+    return { success: true, deletedCount: result.affectedRows || 0 };
+  } catch (error) {
+    console.error('Error clearing search history:', error);
+    return { success: false, deletedCount: 0 };
+  }
+}
+
+/**
+ * ==========================================
+ * NOTIFICATION HELPER FUNCTIONS
+ * ==========================================
+ */
+
+/**
+ * Get users with subscriptions expiring in X days
+ * Note: chat_id is stored when user first subscribes for notification purposes
+ */
+export async function getUsersWithExpiringSubscriptions(daysUntilExpiry: number = 3): Promise<Array<{
+  telegramUserId: number;
+  username: string;
+  subscriptionType: string;
+  subscriptionEnd: Date;
+  chatId: number;
+}>> {
+  try {
+    const [rows]: any = await dbPool.query(
+      `SELECT telegram_user_id as telegramUserId, username, subscription_type as subscriptionType, 
+              subscription_end as subscriptionEnd, telegram_user_id as chatId
+       FROM user_subscriptions 
+       WHERE is_active = TRUE 
+       AND subscription_end IS NOT NULL
+       AND subscription_end > NOW()
+       AND subscription_end <= DATE_ADD(NOW(), INTERVAL ? DAY)
+       AND (notification_sent_at IS NULL OR notification_sent_at < DATE_SUB(NOW(), INTERVAL 1 DAY))`,
+      [daysUntilExpiry]
+    );
+    
+    return Array.isArray(rows) ? rows : [];
+  } catch (error) {
+    console.error('Error getting expiring subscriptions:', error);
+    return [];
+  }
+}
+
+/**
+ * Mark notification as sent for a user
+ */
+export async function markNotificationSent(telegramUserId: number): Promise<{success: boolean}> {
+  try {
+    await dbPool.query(
+      `UPDATE user_subscriptions SET notification_sent_at = NOW() WHERE telegram_user_id = ?`,
+      [telegramUserId]
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Error marking notification sent:', error);
+    return { success: false };
   }
 }
