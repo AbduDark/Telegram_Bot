@@ -2,6 +2,24 @@ import TelegramBot from 'node-telegram-bot-api';
 import { lookupPhoneNumber, lookupFacebookId } from './phone-lookup';
 import { formatResponse } from './formatter';
 import { chatWithAI } from './ai-assistant';
+import {
+  hasActiveSubscription,
+  getSubscriptionDetails,
+  getFreeSearchesRemaining,
+  useFreeSearch,
+  generateReferralCode,
+  applyReferralCode,
+  getReferralStats,
+  useBonusSearch,
+  getSearchHistory,
+  saveSearchHistory,
+  PAYMENT_CONFIG,
+  getPackageDetails,
+  getUserReferralDiscount,
+  markReferralDiscountUsed,
+  PackageDuration,
+  SubscriptionType
+} from './database';
 
 export async function handleTelegramMessage(
   bot: TelegramBot,
@@ -20,6 +38,15 @@ export async function handleTelegramMessage(
 
   try {
     if (text.startsWith('/start')) {
+      const parts = text.split(' ');
+      if (parts.length > 1 && parts[1].startsWith('ref_')) {
+        const referralCode = parts[1].replace('ref_', '');
+        const result = await applyReferralCode(userId, username, referralCode);
+        if (result.success) {
+          await bot.sendMessage(chatId, `🎁 ${result.message}`, { parse_mode: 'HTML' });
+        }
+      }
+
       await bot.sendMessage(chatId, `
 مرحباً ${username}! 👋
 <b>بوت البحث الذكي 🔍</b>
@@ -32,21 +59,19 @@ export async function handleTelegramMessage(
 ━━━━━━━━━━━━━━━━
 <b>الاشتراكات:</b>
 
-👑 <b>VIP</b>
-✓ جميع القواعد
-✓ نتائج شاملة
-✓ دعم أولوية
-
-👤 <b>عادي</b>
-✓ Facebook فقط
-✓ نتائج محدودة
+👑 <b>VIP</b> - جميع القواعد
+👤 <b>عادي</b> - Facebook فقط
 
 ━━━━━━━━━━━━━━━━
 <b>الأوامر:</b>
 /help - المساعدة
-/status - اشتراكك
+/status - حالة اشتراكك
+/packages - باقات الاشتراك
+/subscribe - اشترك الآن
+/referral - كود الإحالة
+/history - سجل البحث
 
-جاهز للبحث! 🚀
+🎁 لديك ${PAYMENT_CONFIG.FREE_SEARCHES} عمليات بحث مجانية!
 `, { parse_mode: 'HTML' });
       return;
     }
@@ -55,51 +80,57 @@ export async function handleTelegramMessage(
       await bot.sendMessage(chatId, `
 <b>📋 دليل الاستخدام</b>
 
-<b>البحث:</b>
-1️⃣ أرسل رقم الهاتف
-2️⃣ انتظر النتائج
-3️⃣ احصل على المعلومات
-
-<b>💡 نصائح:</b>
-• اكتب الرقم بأي صيغة
-• جرب Facebook ID
+<b>🔍 البحث:</b>
+• أرسل رقم الهاتف بأي صيغة
+• أرسل Facebook ID
 • اسألني أي شيء!
+
+<b>💰 الاشتراكات:</b>
+/packages - عرض الباقات والأسعار
+/subscribe - اشترك الآن
+/status - حالة اشتراكك
+
+<b>🎁 نظام الإحالة:</b>
+/referral - احصل على كود إحالتك
+• شارك الكود مع أصدقائك
+• احصل على 3 عمليات بحث مجانية لكل صديق يشترك
+• صديقك يحصل على خصم 10%
+
+<b>📜 السجل:</b>
+/history - آخر 10 عمليات بحث
 
 <b>❓ أمثلة:</b>
 • 01234567890
 • +201234567890  
 • 100007800548113
-
-💬 <b>محتاج مساعدة؟</b>
-اكتب سؤالك وسأساعدك!
 `, { parse_mode: 'HTML' });
       return;
     }
 
     if (text.startsWith('/status')) {
-      const { hasActiveSubscription, getSubscriptionDetails } = await import('./database');
-      
       try {
         const subscription = await hasActiveSubscription(userId);
+        const freeSearches = await getFreeSearchesRemaining(userId);
+        const referralStats = await getReferralStats(userId);
         
         if (!subscription.hasSubscription) {
           await bot.sendMessage(chatId, `
 🔒 <b>اشتراك غير نشط</b>
 
-للاشتراك:
-💳 تواصل مع الدعم
-`);
+📊 <b>البحث المجاني:</b>
+• المتبقي: ${freeSearches} من ${PAYMENT_CONFIG.FREE_SEARCHES}
+${referralStats ? `• مكافآت الإحالة: ${referralStats.bonusSearches} عمليات` : ''}
+
+💎 للاشتراك: /subscribe
+📦 عرض الباقات: /packages
+`, { parse_mode: 'HTML' });
           return;
         }
 
         const details = await getSubscriptionDetails(userId);
         
         if (!details) {
-          await bot.sendMessage(chatId, `
-⚠️ <b>خطأ مؤقت</b>
-
-حاول لاحقاً أو تواصل مع الدعم
-`);
+          await bot.sendMessage(chatId, `⚠️ <b>خطأ مؤقت</b>\n\nحاول لاحقاً`, { parse_mode: 'HTML' });
           return;
         }
 
@@ -109,7 +140,7 @@ export async function handleTelegramMessage(
           : 'غير محدد';
 
         await bot.sendMessage(chatId, `
-<b>✅ اشتراكك</b>
+<b>✅ حالة اشتراكك</b>
 
 ${subscriptionType}
 👤 ${username}
@@ -118,27 +149,195 @@ ${subscriptionType}
 
 ${subscription.subscriptionType === 'vip' 
   ? '✓ البحث في جميع القواعد' 
-  : '✓ البحث في Facebook فقط\n\n💎 <b>VIP؟</b> تواصل مع الدعم'}
+  : '✓ البحث في Facebook فقط'}
+${referralStats ? `\n🎁 مكافآت الإحالة: ${referralStats.bonusSearches} عمليات بحث` : ''}
 `, { parse_mode: 'HTML' });
       } catch (error) {
         console.error('❌ [Handler] /status error:', error);
+        await bot.sendMessage(chatId, `❌ <b>خطأ</b>\n\nحاول مرة أخرى لاحقاً`, { parse_mode: 'HTML' });
+      }
+      return;
+    }
+
+    if (text.startsWith('/packages')) {
+      const packages = PAYMENT_CONFIG.PACKAGES;
+      
+      await bot.sendMessage(chatId, `
+💰 <b>باقات الاشتراك المتاحة</b>
+
+━━━━━━━━━━━━━━━━━━━━
+📱 <b>الاشتراك العادي</b> (Facebook فقط)
+━━━━━━━━━━━━━━━━━━━━
+• 1 شهر: ${packages.regular['1month'].stars} ⭐
+• 3 شهور: ${packages.regular['3months'].stars} ⭐ (خصم 10%)
+• 6 شهور: ${packages.regular['6months'].stars} ⭐ (خصم 20%)
+• 12 شهر: ${packages.regular['12months'].stars} ⭐ (خصم 30%)
+
+━━━━━━━━━━━━━━━━━━━━
+👑 <b>اشتراك VIP</b> (جميع قواعد البيانات)
+━━━━━━━━━━━━━━━━━━━━
+• 1 شهر: ${packages.vip['1month'].stars} ⭐
+• 3 شهور: ${packages.vip['3months'].stars} ⭐ (خصم 10%)
+• 6 شهور: ${packages.vip['6months'].stars} ⭐ (خصم 20%)
+• 12 شهر: ${packages.vip['12months'].stars} ⭐ (خصم 30%)
+
+🎁 لديك كود إحالة؟ احصل على خصم 10% إضافي!
+
+💡 للاشتراك: /subscribe
+`, { parse_mode: 'HTML' });
+      return;
+    }
+
+    if (text.startsWith('/subscribe')) {
+      const keyboard = {
+        inline_keyboard: [
+          [
+            { text: '👤 عادي - شهر (100⭐)', callback_data: 'sub_regular_1month' },
+            { text: '👑 VIP - شهر (250⭐)', callback_data: 'sub_vip_1month' }
+          ],
+          [
+            { text: '👤 عادي - 3 شهور (270⭐)', callback_data: 'sub_regular_3months' },
+            { text: '👑 VIP - 3 شهور (675⭐)', callback_data: 'sub_vip_3months' }
+          ],
+          [
+            { text: '👤 عادي - 6 شهور (480⭐)', callback_data: 'sub_regular_6months' },
+            { text: '👑 VIP - 6 شهور (1200⭐)', callback_data: 'sub_vip_6months' }
+          ],
+          [
+            { text: '👤 عادي - سنة (840⭐)', callback_data: 'sub_regular_12months' },
+            { text: '👑 VIP - سنة (2100⭐)', callback_data: 'sub_vip_12months' }
+          ]
+        ]
+      };
+
+      await bot.sendMessage(chatId, `
+💳 <b>اختر باقة الاشتراك</b>
+
+اضغط على الباقة المناسبة لك:
+`, { parse_mode: 'HTML', reply_markup: keyboard });
+      return;
+    }
+
+    if (text.startsWith('/referral')) {
+      try {
+        const code = await generateReferralCode(userId, username);
+        const stats = await getReferralStats(userId);
+        
+        const botUsername = (await bot.getMe()).username;
+        const referralLink = `https://t.me/${botUsername}?start=ref_${code}`;
+
+        await bot.sendMessage(chatId, `
+🎁 <b>نظام الإحالة</b>
+
+📋 <b>كود الإحالة الخاص بك:</b>
+<code>${code}</code>
+
+🔗 <b>رابط الدعوة:</b>
+${referralLink}
+
+━━━━━━━━━━━━━━━━━━━━
+📊 <b>إحصائياتك:</b>
+• إجمالي الإحالات: ${stats?.totalReferrals || 0}
+• عمليات بحث مكافأة: ${stats?.bonusSearches || 0}
+
+━━━━━━━━━━━━━━━━━━━━
+<b>🎯 المكافآت:</b>
+• أنت تحصل على: 3 عمليات بحث مجانية لكل صديق يشترك
+• صديقك يحصل على: خصم 10% على أول اشتراك
+
+💡 شارك الرابط مع أصدقائك!
+`, { parse_mode: 'HTML' });
+      } catch (error) {
+        console.error('❌ [Handler] /referral error:', error);
+        await bot.sendMessage(chatId, `❌ <b>خطأ</b>\n\nحاول مرة أخرى لاحقاً`, { parse_mode: 'HTML' });
+      }
+      return;
+    }
+
+    if (text.startsWith('/history')) {
+      try {
+        const history = await getSearchHistory(userId, 10);
+        
+        if (history.length === 0) {
+          await bot.sendMessage(chatId, `
+📜 <b>سجل البحث</b>
+
+لا توجد عمليات بحث سابقة.
+
+🔍 ابدأ البحث بإرسال رقم هاتف!
+`, { parse_mode: 'HTML' });
+          return;
+        }
+
+        let historyText = `📜 <b>آخر ${history.length} عمليات بحث</b>\n\n`;
+        
+        history.forEach((item, index) => {
+          const typeEmoji = item.searchType === 'phone' ? '📱' : '🆔';
+          const date = new Date(item.createdAt).toLocaleDateString('ar-EG');
+          historyText += `${index + 1}. ${typeEmoji} <code>${item.searchQuery}</code>\n`;
+          historyText += `   📊 ${item.resultsCount} نتيجة | 📅 ${date}\n\n`;
+        });
+
+        await bot.sendMessage(chatId, historyText, { parse_mode: 'HTML' });
+      } catch (error) {
+        console.error('❌ [Handler] /history error:', error);
+        await bot.sendMessage(chatId, `❌ <b>خطأ</b>\n\nحاول مرة أخرى لاحقاً`, { parse_mode: 'HTML' });
+      }
+      return;
+    }
+
+    if (text.startsWith('/use_code ') || text.startsWith('/usecode ')) {
+      const code = text.split(' ')[1];
+      if (!code) {
         await bot.sendMessage(chatId, `
 ❌ <b>خطأ</b>
 
-حاول مرة أخرى لاحقاً
-`);
+يرجى إدخال كود الإحالة:
+<code>/use_code REFXXXXXX</code>
+`, { parse_mode: 'HTML' });
+        return;
       }
+
+      const result = await applyReferralCode(userId, username, code);
+      await bot.sendMessage(chatId, result.success 
+        ? `✅ ${result.message}` 
+        : `❌ ${result.message}`, { parse_mode: 'HTML' });
       return;
     }
 
     const phonePattern = /[\d+]/;
     if (phonePattern.test(text)) {
+      const subscription = await hasActiveSubscription(userId);
+      
+      if (!subscription.hasSubscription) {
+        const referralStats = await getReferralStats(userId);
+        if (referralStats && referralStats.bonusSearches > 0) {
+          const used = await useBonusSearch(userId);
+          if (used.success) {
+            await bot.sendMessage(chatId, `🎁 تم استخدام بحث مكافأة (المتبقي: ${used.remaining})`, { parse_mode: 'HTML' });
+          }
+        } else {
+          const freeResult = await useFreeSearch(userId, username);
+          if (!freeResult.success) {
+            await bot.sendMessage(chatId, `
+🔒 <b>انتهت عمليات البحث المجانية</b>
+
+💎 للاستمرار، اشترك الآن:
+/subscribe - اختر باقة
+/packages - عرض الأسعار
+
+🎁 أو شارك كود الإحالة واحصل على عمليات مجانية:
+/referral
+`, { parse_mode: 'HTML' });
+            return;
+          }
+          await bot.sendMessage(chatId, `🔍 بحث مجاني (المتبقي: ${freeResult.remaining})`, { parse_mode: 'HTML' });
+        }
+      }
+
       await bot.sendMessage(chatId, '🔍 <b>جاري البحث...</b>', { parse_mode: 'HTML' });
 
       let result;
-      
-      // Determine if it's a Facebook ID or phone number
-      // Facebook IDs typically start with 100 and are longer than 14 digits
       const cleanedText = text.replace(/[^\d]/g, '');
       const isFacebookId = cleanedText.startsWith('100') && cleanedText.length > 14;
       
@@ -150,13 +349,14 @@ ${subscription.subscriptionType === 'vip'
         result = await lookupPhoneNumber(text, userId);
       }
       
+      const resultsCount = (result.facebook?.length || 0) + (result.contacts?.length || 0);
+      await saveSearchHistory(userId, text, isFacebookId ? 'facebook_id' : 'phone', resultsCount);
+      
       const response = formatResponse(result);
-
       await bot.sendMessage(chatId, response, { parse_mode: 'HTML' });
       return;
     }
 
-    // AI Chat for everything else
     console.log(`💬 [Handler] AI Chat request from ${username}`);
     await bot.sendMessage(chatId, '💭 <b>دعني أفكر...</b>', { parse_mode: 'HTML' });
     
@@ -170,6 +370,201 @@ ${subscription.subscriptionType === 'vip'
 
 حاول مرة أخرى
 💬 أو تواصل مع الدعم
-`);
+`, { parse_mode: 'HTML' });
+  }
+}
+
+export async function handleCallbackQuery(
+  bot: TelegramBot,
+  callbackQuery: TelegramBot.CallbackQuery
+): Promise<void> {
+  const chatId = callbackQuery.message?.chat.id;
+  const userId = callbackQuery.from.id;
+  const username = callbackQuery.from.username || callbackQuery.from.first_name || 'مستخدم';
+  const data = callbackQuery.data;
+
+  if (!chatId || !data) return;
+
+  console.log(`🔘 [Callback] ${username} (${userId}): ${data}`);
+
+  try {
+    await bot.answerCallbackQuery(callbackQuery.id);
+
+    if (data.startsWith('sub_')) {
+      const parts = data.replace('sub_', '').split('_');
+      const subscriptionType = parts[0] as SubscriptionType;
+      const duration = parts[1] as PackageDuration;
+      
+      const packageDetails = getPackageDetails(subscriptionType, duration);
+      
+      let finalStars = packageDetails.stars;
+      let referralDiscountApplied = false;
+      
+      const referralDiscount = await getUserReferralDiscount(userId);
+      if (referralDiscount.hasDiscount) {
+        const discountAmount = Math.floor(packageDetails.stars * (referralDiscount.discountPercent / 100));
+        finalStars = packageDetails.stars - discountAmount;
+        referralDiscountApplied = true;
+        await markReferralDiscountUsed(userId);
+      }
+
+      const isVIP = subscriptionType === 'vip';
+      const monthsText: Record<string, string> = {
+        '1month': 'شهر واحد',
+        '3months': '3 شهور',
+        '6months': '6 شهور',
+        '12months': '12 شهر'
+      };
+
+      const title = isVIP 
+        ? `👑 اشتراك VIP - ${monthsText[duration]}` 
+        : `📱 اشتراك عادي - ${monthsText[duration]}`;
+
+      let discountText = '';
+      if (packageDetails.discount > 0) {
+        discountText = referralDiscountApplied 
+          ? ` (خصم ${packageDetails.discount}% + 10% إحالة)` 
+          : ` (خصم ${packageDetails.discount}%)`;
+      } else if (referralDiscountApplied) {
+        discountText = ' (خصم 10% إحالة)';
+      }
+
+      const description = isVIP 
+        ? `اشتراك VIP لمدة ${monthsText[duration]}${discountText}\nالبحث في جميع قواعد البيانات`
+        : `اشتراك عادي لمدة ${monthsText[duration]}${discountText}\nالبحث في Facebook فقط`;
+
+      const payload = `subscription_${subscriptionType}_${duration}`;
+
+      try {
+        await bot.sendInvoice(
+          chatId,
+          title,
+          description,
+          payload,
+          '',
+          'XTR',
+          [{ label: title, amount: finalStars }]
+        );
+
+        let confirmMessage = `✅ تم إرسال فاتورة الدفع!\n\n💰 المبلغ: ${finalStars} ⭐`;
+        if (referralDiscountApplied) {
+          confirmMessage += `\n🎁 تم تطبيق خصم الإحالة 10%!`;
+        }
+        confirmMessage += `\n\n💡 اضغط على الفاتورة لإتمام الدفع`;
+
+        await bot.sendMessage(chatId, confirmMessage, { parse_mode: 'HTML' });
+      } catch (error) {
+        console.error('❌ [Callback] Error sending invoice:', error);
+        await bot.sendMessage(chatId, `❌ خطأ في إرسال الفاتورة. حاول مرة أخرى.`, { parse_mode: 'HTML' });
+      }
+    }
+  } catch (error) {
+    console.error('❌ [Callback] Error:', error);
+  }
+}
+
+export async function handlePreCheckoutQuery(
+  bot: TelegramBot,
+  preCheckoutQuery: TelegramBot.PreCheckoutQuery
+): Promise<void> {
+  console.log(`💳 [PreCheckout] User ${preCheckoutQuery.from.id}: ${preCheckoutQuery.invoice_payload}`);
+  
+  try {
+    await bot.answerPreCheckoutQuery(preCheckoutQuery.id, true);
+    console.log('✅ [PreCheckout] Approved');
+  } catch (error) {
+    console.error('❌ [PreCheckout] Error:', error);
+    await bot.answerPreCheckoutQuery(preCheckoutQuery.id, false, { error_message: 'حدث خطأ. حاول مرة أخرى.' });
+  }
+}
+
+export async function handleSuccessfulPayment(
+  bot: TelegramBot,
+  message: TelegramBot.Message
+): Promise<void> {
+  const successfulPayment = message.successful_payment;
+  const chatId = message.chat.id;
+  const userId = message.from?.id;
+  const username = message.from?.username || message.from?.first_name || 'مستخدم';
+
+  if (!successfulPayment || !userId) return;
+
+  console.log(`💰 [Payment] Success: User ${userId}, Amount: ${successfulPayment.total_amount} XTR`);
+  console.log(`📦 [Payment] Payload: ${successfulPayment.invoice_payload}`);
+
+  try {
+    const { addSubscription, grantReferralBonus, dbPool } = await import('./database');
+
+    const payload = successfulPayment.invoice_payload;
+    let subscriptionType: 'vip' | 'regular' = 'regular';
+    let months = 1;
+
+    if (payload.includes('vip')) {
+      subscriptionType = 'vip';
+    }
+    if (payload.includes('3months')) {
+      months = 3;
+    } else if (payload.includes('6months')) {
+      months = 6;
+    } else if (payload.includes('12months')) {
+      months = 12;
+    }
+
+    const result = await addSubscription(userId, username, subscriptionType, months);
+
+    if (result.success) {
+      try {
+        const [referralUse]: any = await dbPool.query(
+          `SELECT referrer_id, subscription_granted FROM referral_uses 
+           WHERE referred_user_id = ? AND subscription_granted = FALSE`,
+          [userId]
+        );
+
+        if (Array.isArray(referralUse) && referralUse.length > 0) {
+          const referrerId = referralUse[0].referrer_id;
+          await grantReferralBonus(referrerId);
+
+          await dbPool.query(
+            `UPDATE referral_uses SET subscription_granted = TRUE WHERE referred_user_id = ?`,
+            [userId]
+          );
+
+          console.log(`🎁 [Payment] Referral bonus granted to ${referrerId}`);
+
+          try {
+            await bot.sendMessage(referrerId, `
+🎉 <b>مكافأة إحالة!</b>
+
+صديقك ${username} اشترك باستخدام كودك!
+🎁 حصلت على 3 عمليات بحث مجانية!
+
+شكراً لمشاركة الكود! 💪
+`, { parse_mode: 'HTML' });
+          } catch (e) {
+            console.log('Could not notify referrer');
+          }
+        }
+      } catch (refError) {
+        console.error('⚠️ [Payment] Error granting referral bonus:', refError);
+      }
+
+      const endDateStr = result.endDate?.toLocaleDateString('ar-EG') || 'غير محدد';
+      const message = subscriptionType === 'vip'
+        ? `🎉 <b>تم تفعيل اشتراك VIP بنجاح!</b>\n\n📅 مدة الاشتراك: ${months} شهر\n📆 تاريخ الانتهاء: ${endDateStr}\n\n✅ يمكنك الآن البحث في جميع قواعد البيانات! 🔍`
+        : `✅ <b>تم تفعيل الاشتراك العادي بنجاح!</b>\n\n📅 مدة الاشتراك: ${months} شهر\n📆 تاريخ الانتهاء: ${endDateStr}\n\n✅ يمكنك الآن البحث في قاعدة Facebook! 📱`;
+
+      await bot.sendMessage(chatId, message, { parse_mode: 'HTML' });
+    } else {
+      console.error('❌ [Payment] Failed to activate subscription:', result.error);
+      await bot.sendMessage(chatId, `
+❌ <b>عذراً، حدث خطأ أثناء تفعيل الاشتراك</b>
+
+سيتم المحاولة مرة أخرى تلقائياً.
+إذا استمرت المشكلة، تواصل مع الدعم.
+`, { parse_mode: 'HTML' });
+    }
+  } catch (error) {
+    console.error('❌ [Payment] Error processing payment:', error);
+    await bot.sendMessage(chatId, `❌ حدث خطأ. تواصل مع الدعم.`, { parse_mode: 'HTML' });
   }
 }

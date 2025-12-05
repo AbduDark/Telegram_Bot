@@ -1,7 +1,12 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import TelegramBot from 'node-telegram-bot-api';
-import { handleTelegramMessage } from './bot/handlers';
+import { 
+  handleTelegramMessage, 
+  handleCallbackQuery, 
+  handlePreCheckoutQuery,
+  handleSuccessfulPayment 
+} from './bot/handlers';
 import { testConnections } from './bot/database';
 
 dotenv.config();
@@ -49,7 +54,7 @@ async function setupWebhookAutomatically() {
         body: JSON.stringify({
           url: WEBHOOK_URL,
           max_connections: 40,
-          allowed_updates: ['message', 'callback_query'],
+          allowed_updates: ['message', 'callback_query', 'pre_checkout_query'],
         }),
       }
     );
@@ -86,7 +91,15 @@ app.get('/', (req, res) => {
     status: 'running',
     mode: 'production',
     timestamp: new Date().toISOString(),
-    message: 'Telegram Bot Production Server - No Mastra UI'
+    message: 'Telegram Bot Production Server - No Mastra UI',
+    features: [
+      'Phone & Facebook ID lookup',
+      'Subscription packages (1/3/6/12 months)',
+      'Telegram Stars payments',
+      'Referral system with bonuses',
+      'Search history tracking',
+      'Free searches for new users'
+    ]
   });
 });
 
@@ -101,6 +114,30 @@ app.get('/health', (req, res) => {
 app.post('/webhook', async (req, res) => {
   try {
     const update = req.body;
+    
+    if (update.pre_checkout_query) {
+      console.log('💳 [Webhook] Pre-checkout query received');
+      await handlePreCheckoutQuery(bot, update.pre_checkout_query);
+      res.sendStatus(200);
+      return;
+    }
+    
+    if (update.message?.successful_payment) {
+      console.log('💰 [Webhook] Successful payment received');
+      await handleSuccessfulPayment(bot, update.message);
+      res.sendStatus(200);
+      return;
+    }
+    
+    if (update.callback_query) {
+      console.log('🔘 [Webhook] Callback query received:', {
+        from: update.callback_query.from?.username || update.callback_query.from?.id,
+        data: update.callback_query.data
+      });
+      await handleCallbackQuery(bot, update.callback_query);
+      res.sendStatus(200);
+      return;
+    }
     
     if (update.message) {
       console.log('📨 [Webhook] Received message:', {
@@ -144,7 +181,14 @@ const server = app.listen(PORT, HOST, async () => {
   
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('✅ Server is ready to receive messages!');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('\n📋 Available features:');
+  console.log('   • Phone & Facebook ID lookup');
+  console.log('   • Subscription packages (1/3/6/12 months)');
+  console.log('   • Telegram Stars payments');
+  console.log('   • Referral system with bonuses');
+  console.log('   • Search history tracking');
+  console.log('   • Smart notifications\n');
 });
 
 process.on('SIGTERM', () => {
