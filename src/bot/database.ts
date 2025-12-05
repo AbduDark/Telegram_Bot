@@ -162,6 +162,31 @@ export async function addSubscription(
   }
 }
 
+export async function registerNewUser(telegramUserId: number, username: string): Promise<{ success: boolean; isNew: boolean }> {
+  try {
+    const [existing]: any = await dbPool.query(
+      `SELECT telegram_user_id FROM user_subscriptions WHERE telegram_user_id = ?`,
+      [telegramUserId]
+    );
+
+    if (Array.isArray(existing) && existing.length > 0) {
+      return { success: true, isNew: false };
+    }
+
+    await dbPool.query(
+      `INSERT INTO user_subscriptions (telegram_user_id, username, free_searches_used, is_active, created_at)
+       VALUES (?, ?, 0, FALSE, NOW())`,
+      [telegramUserId, username]
+    );
+
+    console.log(`✅ [Database] New user registered: ${telegramUserId} (${username}) with 5 free searches`);
+    return { success: true, isNew: true };
+  } catch (error) {
+    console.error('❌ [Database] Error registering new user:', error);
+    return { success: false, isNew: false };
+  }
+}
+
 export async function getFreeSearchesRemaining(telegramUserId: number): Promise<number> {
   try {
     const [rows]: any = await dbPool.query(

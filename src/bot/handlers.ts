@@ -17,6 +17,7 @@ import {
   getPackageDetails,
   getUserReferralDiscount,
   markReferralDiscountUsed,
+  registerNewUser,
   PackageDuration,
   SubscriptionType
 } from './database';
@@ -38,6 +39,11 @@ export async function handleTelegramMessage(
 
   try {
     if (text.startsWith('/start')) {
+      const registration = await registerNewUser(userId, username);
+      if (registration.isNew) {
+        console.log(`🆕 [Handler] New user registered: ${username} (${userId})`);
+      }
+      
       const parts = text.split(' ');
       if (parts.length > 1 && parts[1].startsWith('ref_')) {
         const referralCode = parts[1].replace('ref_', '');
@@ -47,6 +53,8 @@ export async function handleTelegramMessage(
         }
       }
 
+      const freeSearches = await getFreeSearchesRemaining(userId);
+      
       await bot.sendMessage(chatId, `
 مرحباً ${username}! 👋
 <b>بوت البحث الذكي 🔍</b>
@@ -71,7 +79,7 @@ export async function handleTelegramMessage(
 /referral - كود الإحالة
 /history - سجل البحث
 
-🎁 لديك ${PAYMENT_CONFIG.FREE_SEARCHES} عمليات بحث مجانية!
+🎁 لديك ${freeSearches} عمليات بحث مجانية!
 `, { parse_mode: 'HTML' });
       return;
     }
@@ -109,6 +117,7 @@ export async function handleTelegramMessage(
 
     if (text.startsWith('/status')) {
       try {
+        await registerNewUser(userId, username);
         const subscription = await hasActiveSubscription(userId);
         const freeSearches = await getFreeSearchesRemaining(userId);
         const referralStats = await getReferralStats(userId);
@@ -189,6 +198,7 @@ ${referralStats ? `\n🎁 مكافآت الإحالة: ${referralStats.bonusSear
     }
 
     if (text.startsWith('/subscribe')) {
+      await registerNewUser(userId, username);
       const keyboard = {
         inline_keyboard: [
           [
@@ -220,6 +230,7 @@ ${referralStats ? `\n🎁 مكافآت الإحالة: ${referralStats.bonusSear
 
     if (text.startsWith('/referral')) {
       try {
+        await registerNewUser(userId, username);
         const code = await generateReferralCode(userId, username);
         const stats = await getReferralStats(userId);
         
@@ -307,6 +318,8 @@ ${referralLink}
 
     const phonePattern = /[\d+]/;
     if (phonePattern.test(text)) {
+      await registerNewUser(userId, username);
+      
       const subscription = await hasActiveSubscription(userId);
       
       if (!subscription.hasSubscription) {
