@@ -3,6 +3,7 @@ import { Agent } from "@mastra/core/agent";
 import { phoneLookupTool } from "../tools/phoneLookupTool";
 import { facebookIdLookupTool } from "../tools/facebookIdLookupTool";
 import { subscriptionManagementTool } from "../tools/subscriptionManagementTool";
+import { starsPaymentTool } from "../tools/starsPaymentTool";
 
 const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
@@ -143,7 +144,7 @@ export const telegramBotAgent = new Agent({
 
   model: groq("llama-3.3-70b-versatile"),
   
-  tools: { phoneLookupTool, facebookIdLookupTool, subscriptionManagementTool },
+  tools: { phoneLookupTool, facebookIdLookupTool, subscriptionManagementTool, starsPaymentTool },
   
   // Note: Memory is optional for this use case since each search is independent
   // If you want to track user search history, uncomment the memory configuration below

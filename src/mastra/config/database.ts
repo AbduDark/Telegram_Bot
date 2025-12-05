@@ -245,3 +245,154 @@ export async function addSubscription(
 export function getTablesForUser(subscriptionType: 'vip' | 'regular'): readonly string[] {
   return subscriptionType === 'vip' ? TABLE_CONFIG.VIP_TABLES : TABLE_CONFIG.REGULAR_TABLES;
 }
+
+/**
+ * Free Searches Configuration
+ */
+export const FREE_SEARCHES_CONFIG = {
+  MAX_FREE_SEARCHES: 5,
+} as const;
+
+/**
+ * Get user's free searches count
+ */
+export async function getFreeSearchesCount(telegramUserId: number): Promise<number> {
+  try {
+    const [rows]: any = await dbPool.query(
+      `SELECT search_count FROM user_free_searches WHERE telegram_user_id = ?`,
+      [telegramUserId]
+    );
+    
+    if (Array.isArray(rows) && rows.length > 0) {
+      return rows[0].search_count;
+    }
+    return 0;
+  } catch (error) {
+    console.error('Error getting free searches count:', error);
+    return 0;
+  }
+}
+
+/**
+ * Check if user has free searches remaining
+ */
+export async function hasFreeSsearchesRemaining(telegramUserId: number): Promise<{hasRemaining: boolean, used: number, remaining: number}> {
+  const used = await getFreeSearchesCount(telegramUserId);
+  const remaining = Math.max(0, FREE_SEARCHES_CONFIG.MAX_FREE_SEARCHES - used);
+  return {
+    hasRemaining: remaining > 0,
+    used,
+    remaining
+  };
+}
+
+/**
+ * Increment user's free search count
+ */
+export async function incrementFreeSearchCount(telegramUserId: number): Promise<{success: boolean, newCount: number}> {
+  try {
+    await dbPool.query(
+      `INSERT INTO user_free_searches (telegram_user_id, search_count, last_search_at)
+       VALUES (?, 1, NOW())
+       ON DUPLICATE KEY UPDATE 
+       search_count = search_count + 1,
+       last_search_at = NOW()`,
+      [telegramUserId]
+    );
+    
+    const newCount = await getFreeSearchesCount(telegramUserId);
+    return { success: true, newCount };
+  } catch (error) {
+    console.error('Error incrementing free search count:', error);
+    return { success: false, newCount: 0 };
+  }
+}
+
+/**
+ * Check if user can perform a search (has subscription OR has free searches)
+ */
+export async function canUserSearch(telegramUserId: number): Promise<{
+  canSearch: boolean;
+  reason: 'subscription' | 'free_trial' | 'no_access';
+  subscriptionType?: string;
+  freeSearchesRemaining?: number;
+}> {
+  const subscription = await hasActiveSubscription(telegramUserId);
+  
+  if (subscription.hasSubscription) {
+    return {
+      canSearch: true,
+      reason: 'subscription',
+      subscriptionType: subscription.subscriptionType
+    };
+  }
+  
+  const freeSearches = await hasFreeSsearchesRemaining(telegramUserId);
+  
+  if (freeSearches.hasRemaining) {
+    return {
+      canSearch: true,
+      reason: 'free_trial',
+      freeSearchesRemaining: freeSearches.remaining
+    };
+  }
+  
+  return {
+    canSearch: false,
+    reason: 'no_access',
+    freeSearchesRemaining: 0
+  };
+}
+
+/**
+ * Payment Configuration
+ */
+export const PAYMENT_CONFIG = {
+  REGULAR_SUBSCRIPTION_STARS: 100,
+  VIP_SUBSCRIPTION_STARS: 250,
+  SUBSCRIPTION_PERIOD_DAYS: 30,
+} as const;
+
+/**
+ * Store payment record
+ */
+export async function storePaymentRecord(
+  telegramUserId: number,
+  username: string,
+  paymentChargeId: string,
+  subscriptionType: 'vip' | 'regular',
+  starsAmount: number
+): Promise<{success: boolean}> {
+  try {
+    await dbPool.query(
+      `INSERT INTO payment_records 
+       (telegram_user_id, username, telegram_payment_charge_id, subscription_type, stars_amount, payment_date)
+       VALUES (?, ?, ?, ?, ?, NOW())`,
+      [telegramUserId, username, paymentChargeId, subscriptionType, starsAmount]
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Error storing payment record:', error);
+    return { success: false };
+  }
+}
+
+/**
+ * Get payment record by charge ID (for refunds)
+ */
+export async function getPaymentByChargeId(chargeId: string) {
+  try {
+    const [rows]: any = await dbPool.query(
+      `SELECT * FROM payment_records WHERE telegram_payment_charge_id = ?`,
+      [chargeId]
+    );
+    
+    if (Array.isArray(rows) && rows.length > 0) {
+      return rows[0];
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting payment record:', error);
+    return null;
+  }
+}

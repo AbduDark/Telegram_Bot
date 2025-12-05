@@ -1,7 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { RowDataPacket } from "mysql2/promise";
-import { dbPool, getTablesForUser } from "../config/database";
+import { dbPool, getTablesForUser, canUserSearch, incrementFreeSearchCount, FREE_SEARCHES_CONFIG, PAYMENT_CONFIG } from "../config/database";
 
 /**
  * Phone Lookup Tool - Dynamic Table Search
@@ -132,30 +132,43 @@ export const phoneLookupTool = createTool({
       telegramUserId 
     });
     
-    const { hasActiveSubscription } = await import('../config/database');
+    const searchAccess = await canUserSearch(telegramUserId);
     
-    const subscription = await hasActiveSubscription(telegramUserId);
-    
-    if (!subscription.hasSubscription) {
-      logger?.warn('⚠️ [PhoneLookupTool] No active subscription found', { 
+    if (!searchAccess.canSearch) {
+      logger?.warn('⚠️ [PhoneLookupTool] No access - free searches exhausted and no subscription', { 
         telegramUserId 
       });
-      throw new Error('❌ ليس لديك اشتراك نشط. للاستفادة من خدمة البحث، يرجى الاشتراك أولاً. اتصل بالدعم للحصول على اشتراك VIP أو عادي.');
+      throw new Error(`❌ لقد استنفدت جميع عمليات البحث المجانية (${FREE_SEARCHES_CONFIG.MAX_FREE_SEARCHES} عمليات).
+
+💳 للاستمرار في استخدام الخدمة، اشترك الآن:
+
+👑 اشتراك VIP: ${PAYMENT_CONFIG.VIP_SUBSCRIPTION_STARS} نجمة ⭐ شهرياً
+   • بحث في جميع قواعد البيانات
+
+📱 اشتراك عادي: ${PAYMENT_CONFIG.REGULAR_SUBSCRIPTION_STARS} نجمة ⭐ شهرياً
+   • بحث في Facebook فقط
+
+أرسل /subscribe للاشتراك`);
     }
     
-    if (subscription.subscriptionType !== 'vip' && subscription.subscriptionType !== 'regular') {
-      logger?.error('⚠️ [PhoneLookupTool] Invalid subscription type', { 
-        subscriptionType: subscription.subscriptionType 
+    let userType = 'Regular';
+    let subscriptionType: 'vip' | 'regular' = 'regular';
+    
+    if (searchAccess.reason === 'subscription') {
+      subscriptionType = searchAccess.subscriptionType as 'vip' | 'regular';
+      userType = subscriptionType === 'vip' ? 'VIP' : 'Regular';
+    } else if (searchAccess.reason === 'free_trial') {
+      await incrementFreeSearchCount(telegramUserId);
+      logger?.info('📊 [PhoneLookupTool] Free search used', { 
+        telegramUserId,
+        remaining: (searchAccess.freeSearchesRemaining || 1) - 1
       });
-      throw new Error('❌ خطأ في النظام: نوع اشتراك غير صحيح. يرجى التواصل مع الدعم.');
     }
-    
-    const userType = subscription.subscriptionType === 'vip' ? 'VIP' : 'Regular';
-    const availableTables = getTablesForUser(subscription.subscriptionType);
+    const availableTables = getTablesForUser(subscriptionType);
     
     logger?.info(`👤 [PhoneLookupTool] User type: ${userType}`, { 
       telegramUserId,
-      subscriptionType: subscription.subscriptionType,
+      subscriptionType: subscriptionType,
       availableTables
     });
     
