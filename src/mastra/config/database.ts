@@ -250,7 +250,7 @@ export function getTablesForUser(subscriptionType: 'vip' | 'regular'): readonly 
  * Free Searches Configuration
  */
 export const FREE_SEARCHES_CONFIG = {
-  MAX_FREE_SEARCHES: 5,
+  MAX_FREE_SEARCHES: 10,
 } as const;
 
 /**
@@ -352,7 +352,7 @@ export const PAYMENT_CONFIG = {
   REGULAR_SUBSCRIPTION_STARS: 50,
   VIP_SUBSCRIPTION_STARS: 100,
   SUBSCRIPTION_PERIOD_DAYS: 30,
-  FREE_SEARCHES: 5,
+  FREE_SEARCHES: 10,
   MONTHLY_SEARCH_LIMIT: 50,
   
   PACKAGES: {
