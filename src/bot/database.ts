@@ -32,24 +32,57 @@ export const contactsPool = dbPool;
 
 export const PAYMENT_CONFIG = {
   FREE_SEARCHES: 5,
+  MONTHLY_SEARCH_LIMIT: 50,
   PACKAGES: {
     regular: {
+      '1month': { stars: 50, months: 1, discount: 0 },
+      '3months': { stars: 135, months: 3, discount: 10 },
+      '6months': { stars: 240, months: 6, discount: 20 },
+      '12months': { stars: 420, months: 12, discount: 30 },
+    },
+    vip: {
       '1month': { stars: 100, months: 1, discount: 0 },
       '3months': { stars: 270, months: 3, discount: 10 },
       '6months': { stars: 480, months: 6, discount: 20 },
       '12months': { stars: 840, months: 12, discount: 30 },
-    },
-    vip: {
-      '1month': { stars: 250, months: 1, discount: 0 },
-      '3months': { stars: 675, months: 3, discount: 10 },
-      '6months': { stars: 1200, months: 6, discount: 20 },
-      '12months': { stars: 2100, months: 12, discount: 30 },
     },
   },
   REFERRAL_BONUS: {
     REFERRER_FREE_SEARCHES: 3,
     REFEREE_DISCOUNT_PERCENT: 10,
   },
+};
+
+export const TERMS_AND_CONDITIONS = {
+  version: '1.0',
+  lastUpdated: '2024-12-06',
+  text: `
+📜 <b>بنود وشروط الاستخدام</b>
+
+1️⃣ <b>الغرض من البوت:</b>
+هذا البوت مصمم حصرياً لأغراض مكافحة الاحتيال والأعمال المشروعة فقط.
+
+2️⃣ <b>الاستخدام المسموح:</b>
+• التحقق من هوية المتصلين لمنع الاحتيال
+• حماية نفسك وعملك من المحتالين
+• الأغراض القانونية والمشروعة فقط
+
+3️⃣ <b>الاستخدام الممنوع:</b>
+• التجسس أو المطاردة
+• الابتزاز أو التهديد
+• أي استخدام غير قانوني
+
+4️⃣ <b>إخلاء المسؤولية:</b>
+<b>المطورون والقائمون على هذا البوت غير مسؤولين عن أي استخدام خاطئ أو غير قانوني للمعلومات المقدمة.</b>
+
+المستخدم وحده يتحمل المسؤولية الكاملة عن طريقة استخدامه للبيانات.
+
+5️⃣ <b>الخصوصية:</b>
+• نحتفظ بسجل البحث لتحسين الخدمة
+• لا نشارك بياناتك مع أطراف ثالثة
+
+⚠️ <b>تنبيه:</b> باستخدامك هذا البوت، أنت توافق على هذه الشروط وتتعهد باستخدامه للأغراض المشروعة فقط.
+`,
 };
 
 export type PackageDuration = '1month' | '3months' | '6months' | '12months';
@@ -509,6 +542,118 @@ export async function markNotificationSent(telegramUserId: number): Promise<{ su
   } catch (error) {
     console.error('❌ [Database] Error marking notification sent:', error);
     return { success: false };
+  }
+}
+
+export async function hasAcceptedTerms(telegramUserId: number): Promise<boolean> {
+  try {
+    const [rows]: any = await dbPool.query(
+      `SELECT terms_accepted, terms_version FROM user_subscriptions WHERE telegram_user_id = ?`,
+      [telegramUserId]
+    );
+
+    if (Array.isArray(rows) && rows.length > 0) {
+      return rows[0].terms_accepted === true || rows[0].terms_accepted === 1;
+    }
+    return false;
+  } catch (error) {
+    console.error('❌ [Database] Error checking terms acceptance:', error);
+    return false;
+  }
+}
+
+export async function acceptTerms(telegramUserId: number, username: string): Promise<{ success: boolean }> {
+  try {
+    await dbPool.query(
+      `INSERT INTO user_subscriptions (telegram_user_id, username, terms_accepted, terms_version, terms_accepted_at, is_active, created_at)
+       VALUES (?, ?, TRUE, ?, NOW(), FALSE, NOW())
+       ON DUPLICATE KEY UPDATE 
+         terms_accepted = TRUE,
+         terms_version = VALUES(terms_version),
+         terms_accepted_at = NOW()`,
+      [telegramUserId, username, TERMS_AND_CONDITIONS.version]
+    );
+
+    console.log(`✅ [Database] Terms accepted by user ${telegramUserId}`);
+    return { success: true };
+  } catch (error) {
+    console.error('❌ [Database] Error accepting terms:', error);
+    return { success: false };
+  }
+}
+
+export async function getMonthlySearchCount(telegramUserId: number): Promise<number> {
+  try {
+    const [rows]: any = await dbPool.query(
+      `SELECT COUNT(*) as count FROM search_history 
+       WHERE telegram_user_id = ? 
+       AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')`,
+      [telegramUserId]
+    );
+
+    if (Array.isArray(rows) && rows.length > 0) {
+      return rows[0].count || 0;
+    }
+    return 0;
+  } catch (error) {
+    console.error('❌ [Database] Error getting monthly search count:', error);
+    return 0;
+  }
+}
+
+export async function canPerformSearch(telegramUserId: number): Promise<{
+  canSearch: boolean;
+  reason: 'allowed' | 'limit_reached' | 'no_subscription';
+  searchesUsed: number;
+  searchesRemaining: number;
+}> {
+  try {
+    const subscription = await hasActiveSubscription(telegramUserId);
+    
+    if (!subscription.hasSubscription) {
+      const freeSearches = await getFreeSearchesRemaining(telegramUserId);
+      if (freeSearches > 0) {
+        return {
+          canSearch: true,
+          reason: 'allowed',
+          searchesUsed: PAYMENT_CONFIG.FREE_SEARCHES - freeSearches,
+          searchesRemaining: freeSearches
+        };
+      }
+      return {
+        canSearch: false,
+        reason: 'no_subscription',
+        searchesUsed: PAYMENT_CONFIG.FREE_SEARCHES,
+        searchesRemaining: 0
+      };
+    }
+
+    const monthlyCount = await getMonthlySearchCount(telegramUserId);
+    const remaining = PAYMENT_CONFIG.MONTHLY_SEARCH_LIMIT - monthlyCount;
+    
+    if (remaining <= 0) {
+      return {
+        canSearch: false,
+        reason: 'limit_reached',
+        searchesUsed: monthlyCount,
+        searchesRemaining: 0
+      };
+    }
+
+    return {
+      canSearch: true,
+      reason: 'allowed',
+      searchesUsed: monthlyCount,
+      searchesRemaining: remaining
+    };
+  } catch (error) {
+    console.error('❌ [Database] Error checking search permission:', error);
+    return {
+      canSearch: false,
+      reason: 'no_subscription',
+      searchesUsed: 0,
+      searchesRemaining: 0
+    };
   }
 }
 

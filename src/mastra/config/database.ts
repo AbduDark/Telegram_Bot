@@ -349,22 +349,24 @@ export async function canUserSearch(telegramUserId: number): Promise<{
  * Discounts: 3 months = 10%, 6 months = 20%, 12 months = 30%
  */
 export const PAYMENT_CONFIG = {
-  REGULAR_SUBSCRIPTION_STARS: 100,
-  VIP_SUBSCRIPTION_STARS: 250,
+  REGULAR_SUBSCRIPTION_STARS: 50,
+  VIP_SUBSCRIPTION_STARS: 100,
   SUBSCRIPTION_PERIOD_DAYS: 30,
+  FREE_SEARCHES: 5,
+  MONTHLY_SEARCH_LIMIT: 50,
   
   PACKAGES: {
     regular: {
+      '1month': { months: 1, stars: 50, discount: 0 },
+      '3months': { months: 3, stars: 135, discount: 10 },
+      '6months': { months: 6, stars: 240, discount: 20 },
+      '12months': { months: 12, stars: 420, discount: 30 },
+    },
+    vip: {
       '1month': { months: 1, stars: 100, discount: 0 },
       '3months': { months: 3, stars: 270, discount: 10 },
       '6months': { months: 6, stars: 480, discount: 20 },
       '12months': { months: 12, stars: 840, discount: 30 },
-    },
-    vip: {
-      '1month': { months: 1, stars: 250, discount: 0 },
-      '3months': { months: 3, stars: 675, discount: 10 },
-      '6months': { months: 6, stars: 1200, discount: 20 },
-      '12months': { months: 12, stars: 2100, discount: 30 },
     },
   },
   

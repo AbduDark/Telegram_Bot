@@ -190,33 +190,30 @@ export async function lookupPhoneNumber(
 
     console.log(`✅ [PhoneLookup] Found ${facebookResults.length} Facebook results`);
 
-    if (userType === 'vip') {
-      // Use IN for EXACT MATCH - much faster than LIKE
-      const placeholders = searchVariants.map(() => '?').join(',');
-      
-      const contactQuery = `
-        SELECT id, name, address, phone, phone2
-        FROM contacts
-        WHERE phone IN (${placeholders}) OR phone2 IN (${placeholders})
-        LIMIT 100
-      `;
-      
-      const allPhoneParams = [...searchVariants, ...searchVariants];
-      console.log(`🔍 [PhoneLookup] Querying Contacts with exact match:`, searchVariants);
-      const [contactRows] = await contactsPool.query<RowDataPacket[]>(contactQuery, allPhoneParams);
-      
-      contactRows.forEach((row: any) => {
-        contactResults.push({
-          id: row.id,
-          name: row.name,
-          address: row.address,
-          phone: row.phone,
-          phone2: row.phone2
-        });
+    const placeholdersContacts = searchVariants.map(() => '?').join(',');
+    
+    const contactQuery = `
+      SELECT id, name, address, phone, phone2
+      FROM contacts
+      WHERE phone IN (${placeholdersContacts}) OR phone2 IN (${placeholdersContacts})
+      LIMIT 100
+    `;
+    
+    const allPhoneParams = [...searchVariants, ...searchVariants];
+    console.log(`🔍 [PhoneLookup] Querying Contacts with exact match:`, searchVariants);
+    const [contactRows] = await contactsPool.query<RowDataPacket[]>(contactQuery, allPhoneParams);
+    
+    contactRows.forEach((row: any) => {
+      contactResults.push({
+        id: row.id,
+        name: row.name,
+        address: row.address,
+        phone: row.phone,
+        phone2: row.phone2
       });
+    });
 
-      console.log(`✅ [PhoneLookup] Found ${contactResults.length} Contact results`);
-    }
+    console.log(`✅ [PhoneLookup] Found ${contactResults.length} Contact results`);
 
     return {
       userType: userType as 'vip' | 'regular',

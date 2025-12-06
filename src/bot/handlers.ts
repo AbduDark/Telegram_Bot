@@ -14,10 +14,15 @@ import {
   getSearchHistory,
   saveSearchHistory,
   PAYMENT_CONFIG,
+  TERMS_AND_CONDITIONS,
   getPackageDetails,
   getUserReferralDiscount,
   markReferralDiscountUsed,
   registerNewUser,
+  hasAcceptedTerms,
+  acceptTerms,
+  canPerformSearch,
+  getMonthlySearchCount,
   PackageDuration,
   SubscriptionType
 } from './database';
@@ -53,6 +58,25 @@ export async function handleTelegramMessage(
         }
       }
 
+      const termsAccepted = await hasAcceptedTerms(userId);
+      
+      if (!termsAccepted) {
+        const keyboard = {
+          inline_keyboard: [
+            [{ text: '✅ أوافق على الشروط والأحكام', callback_data: 'accept_terms' }]
+          ]
+        };
+        
+        await bot.sendMessage(chatId, `
+مرحباً ${username}! 👋
+
+${TERMS_AND_CONDITIONS.text}
+
+⚠️ <b>يجب الموافقة على الشروط للمتابعة</b>
+`, { parse_mode: 'HTML', reply_markup: keyboard });
+        return;
+      }
+
       const freeSearches = await getFreeSearchesRemaining(userId);
       
       await bot.sendMessage(chatId, `
@@ -67,8 +91,8 @@ export async function handleTelegramMessage(
 ━━━━━━━━━━━━━━━━
 <b>الاشتراكات:</b>
 
-👑 <b>VIP</b> - جميع القواعد
-👤 <b>عادي</b> - Facebook فقط
+👑 <b>VIP</b> - ${PAYMENT_CONFIG.PACKAGES.vip['1month'].stars}⭐/شهر (${PAYMENT_CONFIG.MONTHLY_SEARCH_LIMIT} بحث)
+👤 <b>عادي</b> - ${PAYMENT_CONFIG.PACKAGES.regular['1month'].stars}⭐/شهر (${PAYMENT_CONFIG.MONTHLY_SEARCH_LIMIT} بحث)
 
 ━━━━━━━━━━━━━━━━
 <b>الأوامر:</b>
@@ -78,9 +102,15 @@ export async function handleTelegramMessage(
 /subscribe - اشترك الآن
 /referral - كود الإحالة
 /history - سجل البحث
+/terms - الشروط والأحكام
 
 🎁 لديك ${freeSearches} عمليات بحث مجانية!
 `, { parse_mode: 'HTML' });
+      return;
+    }
+
+    if (text.startsWith('/terms')) {
+      await bot.sendMessage(chatId, TERMS_AND_CONDITIONS.text, { parse_mode: 'HTML' });
       return;
     }
 
@@ -199,29 +229,32 @@ ${referralStats ? `\n🎁 مكافآت الإحالة: ${referralStats.bonusSear
 
     if (text.startsWith('/subscribe')) {
       await registerNewUser(userId, username);
+      const packages = PAYMENT_CONFIG.PACKAGES;
       const keyboard = {
         inline_keyboard: [
           [
-            { text: '👤 عادي - شهر (100⭐)', callback_data: 'sub_regular_1month' },
-            { text: '👑 VIP - شهر (250⭐)', callback_data: 'sub_vip_1month' }
+            { text: `👤 عادي - شهر (${packages.regular['1month'].stars}⭐)`, callback_data: 'sub_regular_1month' },
+            { text: `👑 VIP - شهر (${packages.vip['1month'].stars}⭐)`, callback_data: 'sub_vip_1month' }
           ],
           [
-            { text: '👤 عادي - 3 شهور (270⭐)', callback_data: 'sub_regular_3months' },
-            { text: '👑 VIP - 3 شهور (675⭐)', callback_data: 'sub_vip_3months' }
+            { text: `👤 عادي - 3 شهور (${packages.regular['3months'].stars}⭐)`, callback_data: 'sub_regular_3months' },
+            { text: `👑 VIP - 3 شهور (${packages.vip['3months'].stars}⭐)`, callback_data: 'sub_vip_3months' }
           ],
           [
-            { text: '👤 عادي - 6 شهور (480⭐)', callback_data: 'sub_regular_6months' },
-            { text: '👑 VIP - 6 شهور (1200⭐)', callback_data: 'sub_vip_6months' }
+            { text: `👤 عادي - 6 شهور (${packages.regular['6months'].stars}⭐)`, callback_data: 'sub_regular_6months' },
+            { text: `👑 VIP - 6 شهور (${packages.vip['6months'].stars}⭐)`, callback_data: 'sub_vip_6months' }
           ],
           [
-            { text: '👤 عادي - سنة (840⭐)', callback_data: 'sub_regular_12months' },
-            { text: '👑 VIP - سنة (2100⭐)', callback_data: 'sub_vip_12months' }
+            { text: `👤 عادي - سنة (${packages.regular['12months'].stars}⭐)`, callback_data: 'sub_regular_12months' },
+            { text: `👑 VIP - سنة (${packages.vip['12months'].stars}⭐)`, callback_data: 'sub_vip_12months' }
           ]
         ]
       };
 
       await bot.sendMessage(chatId, `
 💳 <b>اختر باقة الاشتراك</b>
+
+📊 <b>جميع الباقات تشمل ${PAYMENT_CONFIG.MONTHLY_SEARCH_LIMIT} عملية بحث شهرياً</b>
 
 اضغط على الباقة المناسبة لك:
 `, { parse_mode: 'HTML', reply_markup: keyboard });
@@ -324,7 +357,26 @@ ${referralLink}
       let accessType: SearchAccessType = 'regular';
       
       if (subscription.hasSubscription) {
+        const searchPermission = await canPerformSearch(userId);
+        
+        if (!searchPermission.canSearch) {
+          if (searchPermission.reason === 'limit_reached') {
+            await bot.sendMessage(chatId, `
+📊 <b>تم الوصول للحد الشهري</b>
+
+لقد استخدمت ${searchPermission.searchesUsed} من ${PAYMENT_CONFIG.MONTHLY_SEARCH_LIMIT} عملية بحث هذا الشهر.
+
+⏳ سيتم تجديد رصيدك في بداية الشهر القادم.
+
+🎁 شارك كود الإحالة للحصول على عمليات بحث إضافية:
+/referral
+`, { parse_mode: 'HTML' });
+            return;
+          }
+        }
+        
         accessType = (subscription.subscriptionType as SearchAccessType) || 'regular';
+        console.log(`📊 [Handler] Subscribed user search: ${searchPermission.searchesUsed}/${PAYMENT_CONFIG.MONTHLY_SEARCH_LIMIT} used`);
       } else {
         const referralStats = await getReferralStats(userId);
         if (referralStats && referralStats.bonusSearches > 0) {
@@ -419,6 +471,22 @@ export async function handleCallbackQuery(
 
   try {
     await bot.answerCallbackQuery(callbackQuery.id);
+
+    if (data === 'accept_terms') {
+      const result = await acceptTerms(userId, username);
+      if (result.success) {
+        await bot.sendMessage(chatId, `
+✅ <b>تم قبول الشروط والأحكام</b>
+
+شكراً لموافقتك! يمكنك الآن استخدام البوت.
+
+أرسل /start للبدء
+`, { parse_mode: 'HTML' });
+      } else {
+        await bot.sendMessage(chatId, `❌ حدث خطأ. حاول مرة أخرى.`, { parse_mode: 'HTML' });
+      }
+      return;
+    }
 
     if (data.startsWith('sub_')) {
       const parts = data.replace('sub_', '').split('_');
