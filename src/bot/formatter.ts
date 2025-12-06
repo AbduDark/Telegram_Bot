@@ -40,29 +40,21 @@ ${!isVIP ? '💎 <b>VIP:</b> نتائج أكثر!' : ''}
     });
   }
 
-  if (isVIP) {
-    response += `\n━━━━━━━━━━━━━━━━\n`;
-    
-    if (hasContactResults) {
-      response += `<b>📇 Contacts</b> (${result.contacts.length})\n`;
-      response += `━━━━━━━━━━━━━━━━\n`;
+  response += `\n━━━━━━━━━━━━━━━━\n`;
+  
+  if (hasContactResults) {
+    response += `<b>📇 Contacts</b> (${result.contacts.length})\n`;
+    response += `━━━━━━━━━━━━━━━━\n`;
 
-      result.contacts.forEach((contact, index) => {
-        response += `\n<b>${index + 1}.</b>\n`;
-        if (contact.name) response += `🏢 ${contact.name}\n`;
-        if (contact.address) response += `📍 ${contact.address}\n`;
-        if (contact.phone) response += `📞 ${contact.phone}\n`;
-        if (contact.phone2) response += `📞 ${contact.phone2}\n`;
-      });
-    } else {
-      response += `<b>📇 Contacts</b>\nℹ️ لا توجد نتائج\n`;
-    }
+    result.contacts.forEach((contact, index) => {
+      response += `\n<b>${index + 1}.</b>\n`;
+      if (contact.name) response += `🏢 ${contact.name}\n`;
+      if (contact.address) response += `📍 ${contact.address}\n`;
+      if (contact.phone) response += `📞 ${contact.phone}\n`;
+      if (contact.phone2) response += `📞 ${contact.phone2}\n`;
+    });
   } else {
-    response += `\n━━━━━━━━━━━━━━━━\n`;
-    response += `💎 <b>VIP للمزيد!</b>\n`;
-    response += `✓ نتائج Contacts\n`;
-    response += `✓ نتائج شاملة\n`;
-    response += `✓ دعم أولوية\n`;
+    response += `<b>📇 Contacts</b>\nℹ️ لا توجد نتائج\n`;
   }
 
   return response;
