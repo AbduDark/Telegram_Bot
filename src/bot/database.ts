@@ -31,7 +31,7 @@ export const facebookPool = dbPool;
 export const contactsPool = dbPool;
 
 export const PAYMENT_CONFIG = {
-  FREE_SEARCHES: 5,
+  FREE_SEARCHES: 10,
   MONTHLY_SEARCH_LIMIT: 50,
   PACKAGES: {
     regular: {
