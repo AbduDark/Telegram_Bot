@@ -4,6 +4,7 @@ modules = ["bash", "nodejs-22"]
 stack = "AGENT_STACK"
 integrations = ["agentstack-trigger-telegram:1.0.0"]
 expertMode = true
+automationTriggerConnectorName = "legacy_telegram"
 
 [nix]
 channel = "stable-25_05"
