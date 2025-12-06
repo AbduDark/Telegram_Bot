@@ -2,9 +2,9 @@
  * Database Configuration
  * Single unified database for all users
  * 
- * IMPORTANT: All users (VIP and Regular) use the same database.
- * - Regular users: Search only in facebook_accounts table
- * - VIP users: Search in all available tables (facebook_accounts, contacts, etc.)
+ * IMPORTANT: All users (VIP, Regular, and Free) use the same database.
+ * - All users can search in all available tables (facebook_accounts, contacts, etc.)
+ * - Free users get 10 free searches
  * - User subscriptions are stored in user_subscriptions table
  */
 
@@ -23,7 +23,7 @@ export interface DatabaseConfig {
  * Define which tables each user type can access
  */
 export const TABLE_CONFIG = {
-  REGULAR_TABLES: ['facebook_accounts'],
+  REGULAR_TABLES: ['facebook_accounts', 'contacts'],
   VIP_TABLES: ['facebook_accounts', 'contacts'],
 } as const;
 

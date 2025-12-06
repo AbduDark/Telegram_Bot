@@ -5,8 +5,8 @@ import { dbPool, getTablesForUser, canUserSearch, incrementFreeSearchCount, FREE
 
 /**
  * Phone Lookup Tool - Dynamic Table Search
- * - Regular users: Search only in facebook_accounts table
- * - VIP users: Search in all available tables (facebook_accounts, contacts, etc.)
+ * - All users (Free, Regular, VIP): Search in all available tables (facebook_accounts, contacts, etc.)
+ * - Free users get 10 free searches
  */
 
 // Normalize phone number to standard format
@@ -62,7 +62,7 @@ function phoneVariants(p: string): Set<string> {
 export const phoneLookupTool = createTool({
   id: "phone-lookup",
   
-  description: "Search for phone numbers in database tables using EXACT MATCH (fast). Automatically tries multiple Egyptian number formats (0, 20, 020, +20). Regular users search ONLY in facebook_accounts. VIP users search in ALL tables (facebook_accounts, contacts, and any future tables).",
+  description: "Search for phone numbers in database tables using EXACT MATCH (fast). Automatically tries multiple Egyptian number formats (0, 20, 020, +20). All users (Free, Regular, VIP) search in ALL tables (facebook_accounts, contacts).",
   
   inputSchema: z.object({
     phone: z.string().describe("Phone number to search for (e.g., '01234567890', '201234567890'). Automatically tries multiple formats for exact match."),
@@ -143,10 +143,7 @@ export const phoneLookupTool = createTool({
 💳 للاستمرار في استخدام الخدمة، اشترك الآن:
 
 👑 اشتراك VIP: ${PAYMENT_CONFIG.VIP_SUBSCRIPTION_STARS} نجمة ⭐ شهرياً
-   • بحث في جميع قواعد البيانات
-
 📱 اشتراك عادي: ${PAYMENT_CONFIG.REGULAR_SUBSCRIPTION_STARS} نجمة ⭐ شهرياً
-   • بحث في Facebook فقط
 
 أرسل /subscribe للاشتراك`);
     }
