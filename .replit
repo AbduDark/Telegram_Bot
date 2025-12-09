@@ -82,3 +82,8 @@ outputType = "automations"
 task = "shell.exec"
 args = "./scripts/inngest.sh"
 waitForPort = 3000
+
+[userenv]
+
+[userenv.shared]
+REQUIRED_CHANNEL_ID = "-1003299621823"
