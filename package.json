@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "mastra dev",
+    "dev": "npx mastra dev",
     "start": "NODE_ENV=production tsx src/production-server.ts",
     "start:prod": "./scripts/start-production.sh",
     "build": "mastra build",
