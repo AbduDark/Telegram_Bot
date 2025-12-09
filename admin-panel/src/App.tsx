@@ -21,7 +21,7 @@ const queryClient = new QueryClient({
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('admin_token');
   if (!token) {
-    return <Navigate to="/admin-panel/login" replace />;
+    return <Navigate to="/login" replace />;
   }
   return <Layout>{children}</Layout>;
 }
@@ -29,7 +29,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('admin_token');
   if (token) {
-    return <Navigate to="/admin-panel" replace />;
+    return <Navigate to="/" replace />;
   }
   return <>{children}</>;
 }
@@ -40,7 +40,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route
-            path="/admin-panel/login"
+            path="/login"
             element={
               <PublicRoute>
                 <Login />
@@ -48,7 +48,7 @@ export default function App() {
             }
           />
           <Route
-            path="/admin-panel"
+            path="/"
             element={
               <ProtectedRoute>
                 <Dashboard />
@@ -56,7 +56,7 @@ export default function App() {
             }
           />
           <Route
-            path="/admin-panel/users"
+            path="/users"
             element={
               <ProtectedRoute>
                 <Users />
@@ -64,7 +64,7 @@ export default function App() {
             }
           />
           <Route
-            path="/admin-panel/subscriptions"
+            path="/subscriptions"
             element={
               <ProtectedRoute>
                 <Subscriptions />
@@ -72,7 +72,7 @@ export default function App() {
             }
           />
           <Route
-            path="/admin-panel/referrals"
+            path="/referrals"
             element={
               <ProtectedRoute>
                 <Referrals />
@@ -80,7 +80,7 @@ export default function App() {
             }
           />
           <Route
-            path="/admin-panel/settings"
+            path="/settings"
             element={
               <ProtectedRoute>
                 <Settings />
@@ -88,14 +88,14 @@ export default function App() {
             }
           />
           <Route
-            path="/admin-panel/search-history"
+            path="/search-history"
             element={
               <ProtectedRoute>
                 <SearchHistory />
               </ProtectedRoute>
             }
           />
-          <Route path="*" element={<Navigate to="/admin-panel" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

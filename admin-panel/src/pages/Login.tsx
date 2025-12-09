@@ -22,7 +22,7 @@ export default function Login() {
 
     try {
       await loginMutation.mutateAsync({ username, password });
-      navigate('/admin-panel');
+      navigate('/');
     } catch (err: any) {
       setError(err.response?.data?.error || 'فشل تسجيل الدخول');
     }

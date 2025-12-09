@@ -24,10 +24,13 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('admin_token');
-      localStorage.removeItem('admin_refresh_token');
-      localStorage.removeItem('admin_user');
-      window.location.href = '/admin-panel/login';
+      const isLoginRequest = error.config?.url?.includes('/login');
+      if (!isLoginRequest) {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_refresh_token');
+        localStorage.removeItem('admin_user');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

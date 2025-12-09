@@ -17,12 +17,12 @@ interface LayoutProps {
 }
 
 const navItems = [
-  { path: '/admin-panel', icon: LayoutDashboard, label: 'لوحة التحكم' },
-  { path: '/admin-panel/users', icon: Users, label: 'المستخدمون' },
-  { path: '/admin-panel/subscriptions', icon: CreditCard, label: 'الاشتراكات' },
-  { path: '/admin-panel/referrals', icon: Share2, label: 'الإحالات' },
-  { path: '/admin-panel/search-history', icon: History, label: 'سجل البحث' },
-  { path: '/admin-panel/settings', icon: Settings, label: 'الإعدادات' },
+  { path: '/', icon: LayoutDashboard, label: 'لوحة التحكم' },
+  { path: '/users', icon: Users, label: 'المستخدمون' },
+  { path: '/subscriptions', icon: CreditCard, label: 'الاشتراكات' },
+  { path: '/referrals', icon: Share2, label: 'الإحالات' },
+  { path: '/search-history', icon: History, label: 'سجل البحث' },
+  { path: '/settings', icon: Settings, label: 'الإعدادات' },
 ];
 
 export default function Layout({ children }: LayoutProps) {
@@ -34,7 +34,7 @@ export default function Layout({ children }: LayoutProps) {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_refresh_token');
     localStorage.removeItem('admin_user');
-    navigate('/admin-panel/login');
+    navigate('/login');
   };
 
   const adminUser = JSON.parse(localStorage.getItem('admin_user') || '{}');
