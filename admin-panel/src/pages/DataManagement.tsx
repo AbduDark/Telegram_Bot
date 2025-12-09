@@ -176,59 +176,81 @@ export default function DataManagement() {
 
   if (tablesLoading) {
     return (
-      <div className="loading-container">
-        <div className="loading-spinner" />
-        <p>جاري التحميل...</p>
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+        <p className="text-slate-400">جاري التحميل...</p>
       </div>
     );
   }
 
   return (
-    <div className="data-management-page">
-      <div className="page-header">
-        <h1 className="page-title">
-          <Database size={24} />
-          إدارة البيانات
-        </h1>
-        <button className="btn-primary" onClick={() => setShowCreateTableModal(true)}>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+            <Database size={20} className="text-white" />
+          </div>
+          <h1 className="text-2xl font-bold text-white">إدارة البيانات</h1>
+        </div>
+        <button
+          className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-colors"
+          onClick={() => setShowCreateTableModal(true)}
+        >
           <Plus size={18} />
           جدول جديد
         </button>
       </div>
 
-      <div className="data-layout">
-        <div className="tables-sidebar">
-          <h3>الجداول ({tablesData?.tables?.length || 0})</h3>
-          <div className="tables-list">
+      {/* Main Layout */}
+      <div className="flex gap-6">
+        {/* Tables Sidebar */}
+        <div className="w-64 flex-shrink-0 bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl overflow-hidden">
+          <div className="p-4 border-b border-slate-700/50">
+            <h3 className="text-sm font-medium text-slate-400">الجداول ({tablesData?.tables?.length || 0})</h3>
+          </div>
+          <div className="p-2 max-h-[500px] overflow-y-auto">
             {tablesData?.tables?.map((table: string) => (
               <button
                 key={table}
-                className={`table-item ${selectedTable === table ? 'active' : ''}`}
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-right transition-colors ${
+                  selectedTable === table
+                    ? 'bg-blue-500/20 text-blue-400'
+                    : 'text-slate-300 hover:bg-slate-700/50'
+                }`}
                 onClick={() => handleSelectTable(table)}
               >
                 <Table size={16} />
-                {table}
+                <span className="truncate">{table}</span>
               </button>
             ))}
           </div>
         </div>
 
-        <div className="table-content">
+        {/* Table Content */}
+        <div className="flex-1 bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl overflow-hidden">
           {!selectedTable ? (
-            <div className="empty-state">
-              <Database size={48} />
+            <div className="flex flex-col items-center justify-center h-[400px] text-slate-500">
+              <Database size={48} className="mb-4 opacity-50" />
               <p>اختر جدول من القائمة لعرض البيانات</p>
             </div>
           ) : (
             <>
-              <div className="table-header">
-                <h2>{selectedTable}</h2>
-                <div className="table-actions">
-                  <button className="btn-secondary" onClick={() => setShowAddModal(true)}>
+              {/* Table Header */}
+              <div className="flex items-center justify-between p-4 border-b border-slate-700/50">
+                <h2 className="text-lg font-semibold text-white">{selectedTable}</h2>
+                <div className="flex gap-2">
+                  <button
+                    className="flex items-center gap-2 px-3 py-2 bg-slate-700/50 hover:bg-slate-600/50 text-white rounded-lg text-sm transition-colors"
+                    onClick={() => setShowAddModal(true)}
+                  >
                     <Plus size={16} />
                     إضافة صف
                   </button>
-                  <button className="btn-secondary" onClick={() => setShowImportModal(true)}>
+                  <button
+                    className="flex items-center gap-2 px-3 py-2 bg-slate-700/50 hover:bg-slate-600/50 text-white rounded-lg text-sm transition-colors"
+                    onClick={() => setShowImportModal(true)}
+                  >
                     <Upload size={16} />
                     استيراد CSV
                   </button>
@@ -236,35 +258,35 @@ export default function DataManagement() {
               </div>
 
               {structureLoading || dataLoading ? (
-                <div className="loading-container">
-                  <div className="loading-spinner" />
+                <div className="flex justify-center p-12">
+                  <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
                 </div>
               ) : (
                 <>
-                  <div className="table-container">
-                    <table className="data-table">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
                       <thead>
-                        <tr>
+                        <tr className="border-b border-slate-700/30">
                           {structureData?.columns?.map((col: { name: string }) => (
-                            <th key={col.name}>{col.name}</th>
+                            <th key={col.name} className="text-right text-xs font-medium text-slate-500 px-4 py-3">{col.name}</th>
                           ))}
-                          <th>إجراءات</th>
+                          <th className="text-right text-xs font-medium text-slate-500 px-4 py-3">إجراءات</th>
                         </tr>
                       </thead>
                       <tbody>
                         {tableData?.data?.length === 0 ? (
                           <tr>
-                            <td colSpan={(structureData?.columns?.length || 0) + 1} className="empty-cell">
+                            <td colSpan={(structureData?.columns?.length || 0) + 1} className="px-4 py-12 text-center text-slate-500">
                               لا توجد بيانات
                             </td>
                           </tr>
                         ) : (
                           tableData?.data?.map((row: Record<string, unknown>, index: number) => (
-                            <tr key={index}>
+                            <tr key={index} className="border-b border-slate-700/20 hover:bg-slate-700/20 transition-colors">
                               {structureData?.columns?.map((col: { name: string }) => (
-                                <td key={col.name}>
+                                <td key={col.name} className="px-4 py-3 text-sm text-slate-300 max-w-[200px] truncate">
                                   {row[col.name] === null ? (
-                                    <span className="null-value">NULL</span>
+                                    <span className="text-slate-600 italic">NULL</span>
                                   ) : typeof row[col.name] === 'object' ? (
                                     JSON.stringify(row[col.name])
                                   ) : (
@@ -272,9 +294,9 @@ export default function DataManagement() {
                                   )}
                                 </td>
                               ))}
-                              <td>
+                              <td className="px-4 py-3">
                                 <button
-                                  className="delete-btn"
+                                  className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg transition-colors"
                                   onClick={() => handleDeleteRow(getRowId(row))}
                                 >
                                   <Trash2 size={16} />
@@ -288,19 +310,21 @@ export default function DataManagement() {
                   </div>
 
                   {tableData?.pagination && tableData.pagination.totalPages > 1 && (
-                    <div className="pagination">
+                    <div className="flex items-center justify-center gap-4 p-4 border-t border-slate-700/30">
                       <button
                         disabled={page === 1}
                         onClick={() => setPage(p => p - 1)}
+                        className="p-2 bg-slate-700/50 hover:bg-slate-600/50 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         <ChevronRight size={18} />
                       </button>
-                      <span>
+                      <span className="text-slate-400 text-sm">
                         صفحة {page} من {tableData.pagination.totalPages}
                       </span>
                       <button
                         disabled={page >= tableData.pagination.totalPages}
                         onClick={() => setPage(p => p + 1)}
+                        className="p-2 bg-slate-700/50 hover:bg-slate-600/50 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         <ChevronLeft size={18} />
                       </button>
@@ -313,22 +337,25 @@ export default function DataManagement() {
         </div>
       </div>
 
+      {/* Add Row Modal */}
       {showAddModal && selectedTable && (
-        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>إضافة صف جديد</h3>
-              <button className="close-btn" onClick={() => setShowAddModal(false)}>
-                <X size={20} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowAddModal(false)}>
+          <div className="bg-slate-800 border border-slate-700/50 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-slate-700/50">
+              <h3 className="text-xl font-bold text-white">إضافة صف جديد</h3>
+              <button className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors" onClick={() => setShowAddModal(false)}>
+                <X size={20} className="text-slate-400" />
               </button>
             </div>
-            <div className="modal-body">
+            <div className="p-6 space-y-4">
               {structureData?.columns?.map((col: { name: string; type: string; extra: string; nullable: boolean }) => (
-                <div key={col.name} className="form-group">
-                  <label>
+                <div key={col.name} className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-300">
                     {col.name}
-                    <span className="col-type">({col.type})</span>
-                    {col.extra.includes('auto_increment') && <span className="auto-badge">تلقائي</span>}
+                    <span className="text-xs text-slate-500">({col.type})</span>
+                    {col.extra.includes('auto_increment') && (
+                      <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">تلقائي</span>
+                    )}
                   </label>
                   {!col.extra.includes('auto_increment') && (
                     <input
@@ -336,14 +363,15 @@ export default function DataManagement() {
                       value={newRowData[col.name] || ''}
                       onChange={(e) => setNewRowData({ ...newRowData, [col.name]: e.target.value })}
                       placeholder={col.nullable ? 'اختياري' : 'مطلوب'}
+                      className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl py-2 px-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                     />
                   )}
                 </div>
               ))}
             </div>
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowAddModal(false)}>إلغاء</button>
-              <button className="btn-primary" onClick={handleAddRow} disabled={insertData.isPending}>
+            <div className="flex gap-3 p-6 border-t border-slate-700/50">
+              <button className="flex-1 py-2 bg-slate-700/50 hover:bg-slate-600/50 text-white rounded-xl transition-colors" onClick={() => setShowAddModal(false)}>إلغاء</button>
+              <button className="flex-1 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-colors disabled:opacity-50" onClick={handleAddRow} disabled={insertData.isPending}>
                 {insertData.isPending ? 'جاري الإضافة...' : 'إضافة'}
               </button>
             </div>
@@ -351,85 +379,94 @@ export default function DataManagement() {
         </div>
       )}
 
+      {/* Create Table Modal */}
       {showCreateTableModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateTableModal(false)}>
-          <div className="modal large" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>إنشاء جدول جديد</h3>
-              <button className="close-btn" onClick={() => setShowCreateTableModal(false)}>
-                <X size={20} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowCreateTableModal(false)}>
+          <div className="bg-slate-800 border border-slate-700/50 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-slate-700/50">
+              <h3 className="text-xl font-bold text-white">إنشاء جدول جديد</h3>
+              <button className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors" onClick={() => setShowCreateTableModal(false)}>
+                <X size={20} className="text-slate-400" />
               </button>
             </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label>اسم الجدول</label>
+            <div className="p-6 space-y-6">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-300">اسم الجدول</label>
                 <input
                   type="text"
                   value={newTableName}
                   onChange={(e) => setNewTableName(e.target.value)}
                   placeholder="مثال: products"
+                  className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl py-2 px-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                 />
               </div>
-              <div className="columns-section">
-                <div className="columns-header">
-                  <h4>الأعمدة</h4>
-                  <button className="btn-small" onClick={addColumn}>
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-medium text-slate-300">الأعمدة</h4>
+                  <button className="flex items-center gap-1 px-3 py-1 bg-slate-700/50 hover:bg-slate-600/50 text-white rounded-lg text-sm transition-colors" onClick={addColumn}>
                     <Plus size={14} />
                     إضافة عمود
                   </button>
                 </div>
-                {newTableColumns.map((col, index) => (
-                  <div key={index} className="column-row">
-                    <input
-                      type="text"
-                      placeholder="اسم العمود"
-                      value={col.name}
-                      onChange={(e) => updateColumn(index, 'name', e.target.value)}
-                    />
-                    <select
-                      value={col.type}
-                      onChange={(e) => updateColumn(index, 'type', e.target.value)}
-                    >
-                      {MYSQL_TYPES.map(type => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                    </select>
-                    <label className="checkbox-label">
+                <div className="space-y-3">
+                  {newTableColumns.map((col, index) => (
+                    <div key={index} className="flex flex-wrap items-center gap-2 bg-slate-700/30 rounded-xl p-3">
                       <input
-                        type="checkbox"
-                        checked={col.primary}
-                        onChange={(e) => updateColumn(index, 'primary', e.target.checked)}
+                        type="text"
+                        placeholder="اسم العمود"
+                        value={col.name}
+                        onChange={(e) => updateColumn(index, 'name', e.target.value)}
+                        className="flex-1 min-w-[120px] bg-slate-700/50 border border-slate-600/50 rounded-lg py-2 px-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm"
                       />
-                      مفتاح
-                    </label>
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={col.autoIncrement}
-                        onChange={(e) => updateColumn(index, 'autoIncrement', e.target.checked)}
-                      />
-                      تلقائي
-                    </label>
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={col.nullable}
-                        onChange={(e) => updateColumn(index, 'nullable', e.target.checked)}
-                      />
-                      فارغ
-                    </label>
-                    {newTableColumns.length > 1 && (
-                      <button className="remove-btn" onClick={() => removeColumn(index)}>
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                      <select
+                        value={col.type}
+                        onChange={(e) => updateColumn(index, 'type', e.target.value)}
+                        className="bg-slate-700/50 border border-slate-600/50 rounded-lg py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm"
+                      >
+                        {MYSQL_TYPES.map(type => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
+                      <label className="flex items-center gap-1 text-xs text-slate-400">
+                        <input
+                          type="checkbox"
+                          checked={col.primary}
+                          onChange={(e) => updateColumn(index, 'primary', e.target.checked)}
+                          className="rounded"
+                        />
+                        مفتاح
+                      </label>
+                      <label className="flex items-center gap-1 text-xs text-slate-400">
+                        <input
+                          type="checkbox"
+                          checked={col.autoIncrement}
+                          onChange={(e) => updateColumn(index, 'autoIncrement', e.target.checked)}
+                          className="rounded"
+                        />
+                        تلقائي
+                      </label>
+                      <label className="flex items-center gap-1 text-xs text-slate-400">
+                        <input
+                          type="checkbox"
+                          checked={col.nullable}
+                          onChange={(e) => updateColumn(index, 'nullable', e.target.checked)}
+                          className="rounded"
+                        />
+                        فارغ
+                      </label>
+                      {newTableColumns.length > 1 && (
+                        <button className="p-1 text-red-400 hover:bg-red-500/20 rounded transition-colors" onClick={() => removeColumn(index)}>
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowCreateTableModal(false)}>إلغاء</button>
-              <button className="btn-primary" onClick={handleCreateTable} disabled={createTable.isPending || !newTableName}>
+            <div className="flex gap-3 p-6 border-t border-slate-700/50">
+              <button className="flex-1 py-2 bg-slate-700/50 hover:bg-slate-600/50 text-white rounded-xl transition-colors" onClick={() => setShowCreateTableModal(false)}>إلغاء</button>
+              <button className="flex-1 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-colors disabled:opacity-50" onClick={handleCreateTable} disabled={createTable.isPending || !newTableName}>
                 {createTable.isPending ? 'جاري الإنشاء...' : 'إنشاء الجدول'}
               </button>
             </div>
@@ -437,48 +474,50 @@ export default function DataManagement() {
         </div>
       )}
 
+      {/* Import CSV Modal */}
       {showImportModal && selectedTable && (
-        <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
-          <div className="modal large" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>
-                <FileSpreadsheet size={20} />
-                استيراد من CSV
-              </h3>
-              <button className="close-btn" onClick={() => setShowImportModal(false)}>
-                <X size={20} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowImportModal(false)}>
+          <div className="bg-slate-800 border border-slate-700/50 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-slate-700/50">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet size={20} className="text-emerald-400" />
+                <h3 className="text-xl font-bold text-white">استيراد من CSV</h3>
+              </div>
+              <button className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors" onClick={() => setShowImportModal(false)}>
+                <X size={20} className="text-slate-400" />
               </button>
             </div>
-            <div className="modal-body">
-              <div className="upload-section">
+            <div className="p-6 space-y-6">
+              <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-600/50 rounded-xl">
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept=".csv"
                   onChange={handleFileUpload}
-                  style={{ display: 'none' }}
+                  className="hidden"
                 />
-                <button className="btn-upload" onClick={() => fileInputRef.current?.click()}>
+                <button className="flex items-center gap-2 px-6 py-3 bg-slate-700/50 hover:bg-slate-600/50 text-white rounded-xl transition-colors" onClick={() => fileInputRef.current?.click()}>
                   <Upload size={20} />
                   اختر ملف CSV
                 </button>
                 {csvData.length > 0 && (
-                  <span className="file-info">{csvData.length} صف جاهز للاستيراد</span>
+                  <span className="mt-3 text-emerald-400">{csvData.length} صف جاهز للاستيراد</span>
                 )}
               </div>
 
               {csvHeaders.length > 0 && (
-                <div className="mapping-section">
-                  <h4>ربط الأعمدة</h4>
-                  <p className="mapping-hint">اختر عمود الجدول المناسب لكل عمود في ملف CSV</p>
-                  <div className="mapping-grid">
+                <div>
+                  <h4 className="text-sm font-medium text-slate-300 mb-3">ربط الأعمدة</h4>
+                  <p className="text-xs text-slate-500 mb-4">اختر عمود الجدول المناسب لكل عمود في ملف CSV</p>
+                  <div className="space-y-2">
                     {csvHeaders.map(header => (
-                      <div key={header} className="mapping-row">
-                        <span className="csv-col">{header}</span>
-                        <span className="arrow">←</span>
+                      <div key={header} className="flex items-center gap-3 bg-slate-700/30 rounded-lg p-3">
+                        <span className="flex-1 text-sm text-white font-mono">{header}</span>
+                        <span className="text-slate-500">←</span>
                         <select
                           value={columnMapping[header] || ''}
                           onChange={(e) => setColumnMapping({ ...columnMapping, [header]: e.target.value })}
+                          className="flex-1 bg-slate-700/50 border border-slate-600/50 rounded-lg py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm"
                         >
                           <option value="">-- تجاهل --</option>
                           {structureData?.columns?.map((col: { name: string }) => (
@@ -492,22 +531,22 @@ export default function DataManagement() {
               )}
 
               {csvData.length > 0 && (
-                <div className="preview-section">
-                  <h4>معاينة البيانات (أول 5 صفوف)</h4>
-                  <div className="table-container small">
-                    <table className="data-table">
+                <div>
+                  <h4 className="text-sm font-medium text-slate-300 mb-3">معاينة البيانات (أول 5 صفوف)</h4>
+                  <div className="overflow-x-auto bg-slate-700/30 rounded-xl">
+                    <table className="w-full">
                       <thead>
-                        <tr>
+                        <tr className="border-b border-slate-600/30">
                           {csvHeaders.map(h => (
-                            <th key={h}>{h}</th>
+                            <th key={h} className="text-right text-xs font-medium text-slate-500 px-3 py-2">{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {csvData.slice(0, 5).map((row, i) => (
-                          <tr key={i}>
+                          <tr key={i} className="border-b border-slate-700/20">
                             {csvHeaders.map(h => (
-                              <td key={h}>{String(row[h] ?? '')}</td>
+                              <td key={h} className="px-3 py-2 text-xs text-slate-300">{String(row[h] ?? '')}</td>
                             ))}
                           </tr>
                         ))}
@@ -517,10 +556,10 @@ export default function DataManagement() {
                 </div>
               )}
             </div>
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowImportModal(false)}>إلغاء</button>
+            <div className="flex gap-3 p-6 border-t border-slate-700/50">
+              <button className="flex-1 py-2 bg-slate-700/50 hover:bg-slate-600/50 text-white rounded-xl transition-colors" onClick={() => setShowImportModal(false)}>إلغاء</button>
               <button
-                className="btn-primary"
+                className="flex-1 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-colors disabled:opacity-50"
                 onClick={handleImportCSV}
                 disabled={importCSV.isPending || csvData.length === 0}
               >

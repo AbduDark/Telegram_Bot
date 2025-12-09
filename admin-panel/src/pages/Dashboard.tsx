@@ -1,6 +1,6 @@
 import { useStats } from '../api/hooks';
 import StatsCard from '../components/StatsCard';
-import { Users, CreditCard, Star, Search, UserPlus, Activity } from 'lucide-react';
+import { Users, CreditCard, Star, Search, UserPlus, Activity, TrendingUp } from 'lucide-react';
 import {
   AreaChart,
   Area,
@@ -22,17 +22,19 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="loading-container">
-        <div className="loading-spinner" />
-        <p>جاري التحميل...</p>
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+        <p className="text-slate-400">جاري التحميل...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="error-container">
-        <p>حدث خطأ في تحميل البيانات</p>
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-6 py-4 rounded-xl">
+          حدث خطأ في تحميل البيانات
+        </div>
       </div>
     );
   }
@@ -47,10 +49,20 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="dashboard">
-      <h1 className="page-title">لوحة التحكم</h1>
+    <div className="space-y-8">
+      {/* Page Header */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+          <TrendingUp size={20} className="text-white" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-white">لوحة التحكم</h1>
+          <p className="text-sm text-slate-400">نظرة عامة على إحصائيات النظام</p>
+        </div>
+      </div>
 
-      <div className="stats-grid">
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatsCard
           title="إجمالي المستخدمين"
           value={stats?.totalUsers || 0}
@@ -89,9 +101,11 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="charts-grid">
-        <div className="chart-card">
-          <h3>توزيع الاشتراكات</h3>
+      {/* Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Pie Chart */}
+        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6">
+          <h3 className="text-lg font-semibold text-white mb-4">توزيع الاشتراكات</h3>
           {pieData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
@@ -114,23 +128,42 @@ export default function Dashboard() {
                     />
                   ))}
                 </Pie>
-                <Tooltip />
-                <Legend />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                    border: '1px solid rgba(71, 85, 105, 0.5)',
+                    borderRadius: '12px',
+                    color: '#fff',
+                  }}
+                />
+                <Legend
+                  wrapperStyle={{ color: '#94a3b8' }}
+                />
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div className="no-data">لا توجد بيانات</div>
+            <div className="flex items-center justify-center h-[300px] text-slate-500">
+              لا توجد بيانات
+            </div>
           )}
         </div>
 
-        <div className="chart-card">
-          <h3>النشاط اليومي</h3>
+        {/* Area Chart */}
+        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6">
+          <h3 className="text-lg font-semibold text-white mb-4">النشاط اليومي</h3>
           <ResponsiveContainer width="100%" height={300}>
             <AreaChart data={activityData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(71, 85, 105, 0.3)" />
+              <XAxis dataKey="name" stroke="#94a3b8" />
+              <YAxis stroke="#94a3b8" />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                  border: '1px solid rgba(71, 85, 105, 0.5)',
+                  borderRadius: '12px',
+                  color: '#fff',
+                }}
+              />
               <Area
                 type="monotone"
                 dataKey="searches"
