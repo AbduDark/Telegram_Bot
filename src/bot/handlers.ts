@@ -26,6 +26,11 @@ import {
   PackageDuration,
   SubscriptionType
 } from './database';
+import {
+  isUserInRequiredChannel,
+  sendChannelJoinPrompt,
+  handleChannelSubscriptionCheck
+} from './channel-check';
 
 export async function handleTelegramMessage(
   bot: TelegramBot,
@@ -43,6 +48,14 @@ export async function handleTelegramMessage(
   console.log(`📨 [Handler] Message from ${username} (${userId}): ${text.substring(0, 50)}`);
 
   try {
+    const channelCheck = await isUserInRequiredChannel(bot, userId);
+    
+    if (!channelCheck.isMember && channelCheck.channelId) {
+      console.log(`🚫 [Handler] User ${userId} is not subscribed to required channel ${channelCheck.channelId}`);
+      await sendChannelJoinPrompt(bot, chatId, channelCheck.channelId);
+      return;
+    }
+
     if (text.startsWith('/start')) {
       const registration = await registerNewUser(userId, username);
       if (registration.isNew) {
@@ -470,6 +483,11 @@ export async function handleCallbackQuery(
   console.log(`🔘 [Callback] ${username} (${userId}): ${data}`);
 
   try {
+    if (data === 'check_channel_subscription') {
+      await handleChannelSubscriptionCheck(bot, callbackQuery);
+      return;
+    }
+
     await bot.answerCallbackQuery(callbackQuery.id);
 
     if (data === 'accept_terms') {
