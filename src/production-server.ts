@@ -1,4 +1,6 @@
 import express from 'express';
+import cors from 'cors';
+import path from 'path';
 import dotenv from 'dotenv';
 import TelegramBot from 'node-telegram-bot-api';
 import { 
@@ -8,6 +10,7 @@ import {
   handleSuccessfulPayment 
 } from './bot/handlers';
 import { testConnections } from './bot/database';
+import { mountAdminRoutes, createDefaultAdmin } from './admin';
 
 dotenv.config();
 
@@ -82,7 +85,13 @@ const app = express();
 const PORT = parseInt(process.env.PORT || '5000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 
+app.use(cors());
 app.use(express.json());
+
+app.use('/admin-panel', express.static(path.join(__dirname, '../admin-panel/dist')));
+app.get('/admin-panel/*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../admin-panel/dist/index.html'));
+});
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const REPLIT_DEV_DOMAIN = process.env.REPLIT_DEV_DOMAIN;
@@ -281,6 +290,18 @@ const server = app.listen(PORT, HOST, async () => {
   await testConnections();
   
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🔧 Setting up Admin Dashboard');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  
+  try {
+    await mountAdminRoutes(app);
+    await createDefaultAdmin('admin', process.env.ADMIN_PASSWORD || 'admin123');
+    console.log('✅ [Admin] Dashboard ready at /admin-panel');
+  } catch (error) {
+    console.error('❌ [Admin] Failed to setup admin dashboard:', error);
+  }
+  
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🌐 Setting up Telegram Webhook');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
@@ -299,6 +320,7 @@ const server = app.listen(PORT, HOST, async () => {
   console.log('   • Telegram Stars payments');
   console.log('   • Referral system with bonuses');
   console.log('   • Search history tracking');
+  console.log('   • Admin Dashboard at /admin-panel');
   console.log('   • Smart notifications\n');
 });
 
