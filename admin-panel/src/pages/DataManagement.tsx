@@ -1,4 +1,4 @@
-import { useState, useRef, ChangeEvent } from 'react';
+import { useState, useRef, type ChangeEvent } from 'react';
 import { useTables, useTableStructure, useTableData, useInsertData, useCreateTable, useImportCSV, useDeleteRow } from '../api/hooks';
 import { Database, Plus, Upload, Trash2, ChevronLeft, ChevronRight, X, Table, FileSpreadsheet } from 'lucide-react';
 
@@ -165,7 +165,7 @@ export default function DataManagement() {
 
   const updateColumn = (index: number, field: keyof ColumnDef, value: string | boolean) => {
     const updated = [...newTableColumns];
-    (updated[index] as Record<string, string | boolean>)[field] = value;
+    updated[index] = { ...updated[index], [field]: value };
     setNewTableColumns(updated);
   };
 
