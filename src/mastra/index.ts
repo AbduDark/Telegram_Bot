@@ -12,6 +12,76 @@ import { sharedPostgresStorage } from "./storage";
 import { inngest, inngestServe } from "./inngest";
 import { telegramBotAgent } from "./agents/telegramBotAgent";
 
+/**
+ * Check if user is a member of the required channel
+ * Returns true if user is member, false otherwise
+ */
+async function checkChannelMembership(telegramUserId: number): Promise<{
+  isMember: boolean;
+  status: string;
+}> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const requiredChannelId = process.env.REQUIRED_CHANNEL_ID;
+  
+  if (!token || !requiredChannelId) {
+    console.log('⚠️ [Channel Check] TELEGRAM_BOT_TOKEN or REQUIRED_CHANNEL_ID not configured');
+    return { isMember: true, status: 'not_configured' };
+  }
+  
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${token}/getChatMember`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: requiredChannelId,
+          user_id: telegramUserId,
+        }),
+      }
+    );
+    
+    const data = await response.json();
+    
+    if (!data.ok) {
+      console.log('⚠️ [Channel Check] API error:', data.description);
+      return { isMember: false, status: 'error' };
+    }
+    
+    const memberStatus = data.result?.status;
+    const validStatuses = ['member', 'administrator', 'creator'];
+    const isMember = validStatuses.includes(memberStatus);
+    
+    console.log(`📢 [Channel Check] User ${telegramUserId} status: ${memberStatus}, isMember: ${isMember}`);
+    
+    return { isMember, status: memberStatus };
+  } catch (error) {
+    console.error('❌ [Channel Check] Error:', error);
+    return { isMember: false, status: 'error' };
+  }
+}
+
+/**
+ * Get the channel subscription required message
+ */
+function getChannelSubscriptionMessage(): string {
+  const channelId = process.env.REQUIRED_CHANNEL_ID || '';
+  const channelLink = channelId.startsWith('@') 
+    ? `https://t.me/${channelId.substring(1)}` 
+    : `https://t.me/c/${channelId.replace('-100', '')}`;
+  
+  return `⚠️ **يجب الاشتراك في القناة أولاً!**
+
+🔒 لاستخدام البوت، يجب أن تكون مشتركاً في قناتنا الرسمية.
+
+📢 اشترك الآن: ${channelLink}
+
+✅ بعد الاشتراك، أرسل رسالتك مرة أخرى.
+
+━━━━━━━━━━━━━━━━━━━━
+💡 ملاحظة: إذا ألغيت الاشتراك، لن تتمكن من استخدام البوت مرة أخرى حتى تشترك من جديد.`;
+}
+
 async function setupTelegramWebhook() {
   const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   const REPLIT_DEV_DOMAIN = process.env.REPLIT_DEV_DOMAIN;
@@ -207,6 +277,35 @@ export const mastra = new Mastra({
               logger?.warn("⚠️ [Telegram] No user ID found");
               return c.text("OK", 200);
             }
+            
+            // Check channel membership FIRST before any processing
+            const channelCheck = await checkChannelMembership(telegramUserId);
+            
+            if (!channelCheck.isMember) {
+              logger?.info("🚫 [Telegram] User not subscribed to required channel", {
+                telegramUserId,
+                status: channelCheck.status
+              });
+              
+              const subscriptionMessage = getChannelSubscriptionMessage();
+              const token = process.env.TELEGRAM_BOT_TOKEN;
+              
+              if (token) {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chat_id: chatId,
+                    text: subscriptionMessage,
+                    parse_mode: "Markdown",
+                  }),
+                });
+              }
+              
+              return c.text("OK", 200);
+            }
+            
+            logger?.info("✅ [Telegram] User is subscribed to channel", { telegramUserId });
             
             // Check if message contains digits
             const hasDigits = /\d/.test(message);
