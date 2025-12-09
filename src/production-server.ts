@@ -11,6 +11,73 @@ import { testConnections } from './bot/database';
 
 dotenv.config();
 
+const REQUIRED_CHANNEL_ID = process.env.REQUIRED_CHANNEL_ID || '-1003299621823';
+const CHANNEL_INVITE_LINK = 'https://t.me/+dZ2KxlX8lz9lZGI0';
+
+async function checkChannelMembership(userId: number): Promise<{ isMember: boolean; status: string }> {
+  const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+  
+  if (!TELEGRAM_BOT_TOKEN) {
+    console.log('⚠️ [Channel Check] No bot token, skipping check');
+    return { isMember: true, status: 'no_token' };
+  }
+  
+  if (!REQUIRED_CHANNEL_ID) {
+    console.log('⚠️ [Channel Check] No channel ID configured, skipping check');
+    return { isMember: true, status: 'no_channel' };
+  }
+  
+  try {
+    console.log(`🔍 [Channel Check] Checking membership for user ${userId} in channel ${REQUIRED_CHANNEL_ID}`);
+    
+    const response = await fetch(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getChatMember`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: REQUIRED_CHANNEL_ID,
+          user_id: userId
+        })
+      }
+    );
+    
+    const data = await response.json();
+    
+    if (!data.ok) {
+      console.log(`⚠️ [Channel Check] API error: ${data.description}`);
+      return { isMember: true, status: 'api_error' };
+    }
+    
+    const status = data.result?.status;
+    const isMember = ['member', 'administrator', 'creator'].includes(status);
+    
+    console.log(`📊 [Channel Check] User ${userId} status: ${status}, isMember: ${isMember}`);
+    
+    return { isMember, status };
+  } catch (error) {
+    console.error('❌ [Channel Check] Error:', error);
+    return { isMember: true, status: 'error' };
+  }
+}
+
+async function sendSubscriptionMessage(bot: TelegramBot, chatId: number): Promise<void> {
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: '📢 اشترك في القناة', url: CHANNEL_INVITE_LINK }],
+      [{ text: '✅ تحقق من الاشتراك', callback_data: 'check_subscription' }]
+    ]
+  };
+  
+  await bot.sendMessage(chatId, `
+⚠️ <b>يجب الاشتراك في القناة أولاً!</b>
+
+للاستفادة من خدمات البوت، يرجى الاشتراك في قناتنا الرسمية.
+
+👇 اضغط على الزر أدناه للاشتراك، ثم اضغط "تحقق من الاشتراك"
+`, { parse_mode: 'HTML', reply_markup: keyboard });
+}
+
 const app = express();
 const PORT = parseInt(process.env.PORT || '5000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -134,6 +201,36 @@ app.post('/webhook', async (req, res) => {
         from: update.callback_query.from?.username || update.callback_query.from?.id,
         data: update.callback_query.data
       });
+      
+      if (update.callback_query.data === 'check_subscription') {
+        const userId = update.callback_query.from?.id;
+        const chatId = update.callback_query.message?.chat?.id;
+        
+        if (userId && chatId) {
+          const channelCheck = await checkChannelMembership(userId);
+          
+          if (channelCheck.isMember) {
+            await bot.answerCallbackQuery(update.callback_query.id, {
+              text: '✅ تم التحقق! أنت مشترك في القناة',
+              show_alert: true
+            });
+            await bot.sendMessage(chatId, `
+✅ <b>تم التحقق من اشتراكك!</b>
+
+مرحباً بك! يمكنك الآن استخدام البوت.
+أرسل /start للبدء.
+`, { parse_mode: 'HTML' });
+          } else {
+            await bot.answerCallbackQuery(update.callback_query.id, {
+              text: '❌ لم يتم العثور على اشتراكك. تأكد من الاشتراك في القناة أولاً',
+              show_alert: true
+            });
+          }
+          res.sendStatus(200);
+          return;
+        }
+      }
+      
       await handleCallbackQuery(bot, update.callback_query);
       res.sendStatus(200);
       return;
@@ -145,6 +242,20 @@ app.post('/webhook', async (req, res) => {
         text: update.message.text?.substring(0, 50),
         chatId: update.message.chat.id
       });
+
+      const userId = update.message.from?.id;
+      const chatId = update.message.chat.id;
+      
+      if (userId) {
+        const channelCheck = await checkChannelMembership(userId);
+        
+        if (!channelCheck.isMember) {
+          console.log(`🚫 [Webhook] User ${userId} not subscribed to channel`);
+          await sendSubscriptionMessage(bot, chatId);
+          res.sendStatus(200);
+          return;
+        }
+      }
 
       await handleTelegramMessage(bot, update.message);
     }
