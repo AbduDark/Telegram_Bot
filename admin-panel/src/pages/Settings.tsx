@@ -63,7 +63,7 @@ export default function Settings() {
 
   const handleSave = async () => {
     try {
-      await updateSettings.mutateAsync(form);
+      await updateSettings.mutateAsync(form as unknown as Record<string, string>);
       setSaveStatus('success');
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch {

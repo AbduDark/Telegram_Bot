@@ -102,7 +102,7 @@ export interface LoginResponse {
   admin: Admin;
 }
 
-export interface PaginatedResponse<T> {
+export interface PaginatedResponse<_T = unknown> {
   pagination: {
     page: number;
     limit: number;
