@@ -321,7 +321,7 @@ module.exports = {
     {
       name: 'telegram-bot-api',
       script: 'npm',
-      args: 'run start',
+      args: 'run start:prod',
       cwd: '/var/www/telegram-bot',
       env: {
         NODE_ENV: 'production',

@@ -98,11 +98,13 @@ export function useSettings() {
 
 export function useSearchHistory(page: number = 1, limit: number = 50, type?: string) {
   return useQuery({
-    queryKey: ['searchHistory', page, limit, type],
+    queryKey: ['searchHistory', page, limit, type || null],
     queryFn: async (): Promise<SearchHistoryResponse> => {
-      const { data } = await apiClient.get<SearchHistoryResponse>('/search-history', {
-        params: { page, limit, type },
-      });
+      const params: Record<string, unknown> = { page, limit };
+      if (type) {
+        params.type = type;
+      }
+      const { data } = await apiClient.get<SearchHistoryResponse>('/search-history', { params });
       return data;
     },
   });

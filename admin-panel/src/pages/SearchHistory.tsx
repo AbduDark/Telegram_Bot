@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useSearchHistory } from '../api/hooks';
-import { ChevronLeft, ChevronRight, Filter, Search, Phone, Facebook } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, Phone, Facebook } from 'lucide-react';
 
 export default function SearchHistory() {
   const [page, setPage] = useState(1);
@@ -82,11 +82,13 @@ export default function SearchHistory() {
                         <Phone size={14} />
                         هاتف
                       </>
-                    ) : (
+                    ) : item.search_type === 'facebook_id' ? (
                       <>
                         <Facebook size={14} />
                         فيسبوك
                       </>
+                    ) : (
+                      <>{item.search_type}</>
                     )}
                   </span>
                 </td>
