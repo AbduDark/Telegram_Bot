@@ -10,6 +10,7 @@ import {
   Menu,
   X,
   History,
+  Database,
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -22,6 +23,7 @@ const navItems = [
   { path: '/subscriptions', icon: CreditCard, label: 'الاشتراكات' },
   { path: '/referrals', icon: Share2, label: 'الإحالات' },
   { path: '/search-history', icon: History, label: 'سجل البحث' },
+  { path: '/data', icon: Database, label: 'إدارة البيانات' },
   { path: '/settings', icon: Settings, label: 'الإعدادات' },
 ];
 

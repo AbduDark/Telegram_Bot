@@ -166,3 +166,89 @@ export function useAddFreeSearches() {
     },
   });
 }
+
+export function useTables() {
+  return useQuery({
+    queryKey: ['tables'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ tables: string[] }>('/tables');
+      return data;
+    },
+  });
+}
+
+export function useTableStructure(tableName: string) {
+  return useQuery({
+    queryKey: ['tableStructure', tableName],
+    queryFn: async () => {
+      const { data } = await apiClient.get(`/tables/${tableName}/structure`);
+      return data;
+    },
+    enabled: !!tableName,
+  });
+}
+
+export function useTableData(tableName: string, page: number = 1, limit: number = 50) {
+  return useQuery({
+    queryKey: ['tableData', tableName, page, limit],
+    queryFn: async () => {
+      const { data } = await apiClient.get(`/tables/${tableName}/data`, {
+        params: { page, limit },
+      });
+      return data;
+    },
+    enabled: !!tableName,
+  });
+}
+
+export function useInsertData() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ tableName, data: rowData }: { tableName: string; data: Record<string, unknown> }) => {
+      const { data } = await apiClient.post(`/tables/${tableName}/data`, { data: rowData });
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['tableData', variables.tableName] });
+    },
+  });
+}
+
+export function useCreateTable() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ tableName, columns }: { tableName: string; columns: Array<{ name: string; type: string; primary?: boolean; autoIncrement?: boolean; nullable?: boolean; default?: string }> }) => {
+      const { data } = await apiClient.post('/tables/create', { tableName, columns });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+    },
+  });
+}
+
+export function useImportCSV() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ tableName, rows, columnMapping }: { tableName: string; rows: Record<string, unknown>[]; columnMapping?: Record<string, string> }) => {
+      const { data } = await apiClient.post(`/tables/${tableName}/import-csv`, { rows, columnMapping });
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['tableData', variables.tableName] });
+    },
+  });
+}
+
+export function useDeleteRow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ tableName, id }: { tableName: string; id: string | number }) => {
+      const { data } = await apiClient.delete(`/tables/${tableName}/data/${id}`);
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['tableData', variables.tableName] });
+    },
+  });
+}

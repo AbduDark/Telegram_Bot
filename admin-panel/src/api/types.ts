@@ -132,3 +132,42 @@ export interface UserDetailsResponse {
 export interface SettingsResponse {
   settings: BotSetting[];
 }
+
+export interface TableColumn {
+  name: string;
+  type: string;
+  nullable: boolean;
+  key: string;
+  default: string | null;
+  extra: string;
+}
+
+export interface TableStructureResponse {
+  tableName: string;
+  columns: TableColumn[];
+}
+
+export interface TableDataResponse extends PaginatedResponse {
+  data: Record<string, unknown>[];
+}
+
+export interface TablesListResponse {
+  tables: string[];
+}
+
+export interface CreateTableColumn {
+  name: string;
+  type: string;
+  primary?: boolean;
+  autoIncrement?: boolean;
+  nullable?: boolean;
+  default?: string;
+}
+
+export interface ImportCSVResult {
+  success: boolean;
+  message: string;
+  successCount: number;
+  errorCount: number;
+  errors?: string[];
+}

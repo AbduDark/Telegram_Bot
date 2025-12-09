@@ -8,6 +8,7 @@ import Subscriptions from './pages/Subscriptions';
 import Referrals from './pages/Referrals';
 import Settings from './pages/Settings';
 import SearchHistory from './pages/SearchHistory';
+import DataManagement from './pages/DataManagement';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -92,6 +93,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <SearchHistory />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/data"
+            element={
+              <ProtectedRoute>
+                <DataManagement />
               </ProtectedRoute>
             }
           />

@@ -587,6 +587,283 @@ router.get('/search-history', verifyToken, async (req: AuthenticatedRequest, res
   }
 });
 
+// ==================== DATA MANAGEMENT ROUTES ====================
+
+router.get('/tables', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  console.log(`📨 [Admin API] GET /admin/tables - Admin: ${req.admin?.username}`);
+  console.log(`🔍 [Admin API] Fetching list of all database tables...`);
+  
+  try {
+    const [tables]: any = await dbPool.query('SHOW TABLES');
+    
+    const tableNames = tables.map((row: any) => Object.values(row)[0]);
+    console.log(`✅ [Admin API] Found ${tableNames.length} tables: ${tableNames.join(', ')}`);
+    
+    res.json({ tables: tableNames });
+  } catch (error) {
+    console.error('❌ [Admin API] Get tables error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/tables/:name/structure', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  const tableName = req.params.name;
+  console.log(`📨 [Admin API] GET /admin/tables/${tableName}/structure - Admin: ${req.admin?.username}`);
+  
+  try {
+    const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+    
+    if (safeTableName !== tableName) {
+      console.log(`⚠️ [Admin API] Table name sanitized from "${tableName}" to "${safeTableName}"`);
+    }
+    
+    console.log(`🔍 [Admin API] Fetching structure for table: ${safeTableName}`);
+    const [columns]: any = await dbPool.query(`DESCRIBE \`${safeTableName}\``);
+    
+    const columnDetails = columns.map((col: any) => ({
+      name: col.Field,
+      type: col.Type,
+      nullable: col.Null === 'YES',
+      key: col.Key,
+      default: col.Default,
+      extra: col.Extra
+    }));
+    
+    console.log(`✅ [Admin API] Table ${safeTableName} has ${columns.length} columns: ${columnDetails.map((c: any) => c.name).join(', ')}`);
+    
+    res.json({ 
+      tableName: safeTableName,
+      columns: columnDetails
+    });
+  } catch (error: any) {
+    console.error('❌ [Admin API] Get table structure error:', error);
+    if (error.code === 'ER_NO_SUCH_TABLE') {
+      console.log(`⚠️ [Admin API] Table not found: ${tableName}`);
+      res.status(404).json({ error: 'Table not found' });
+    } else {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+});
+
+router.get('/tables/:name/data', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  const tableName = req.params.name;
+  console.log(`📨 [Admin API] GET /admin/tables/${tableName}/data - Admin: ${req.admin?.username}`);
+  
+  try {
+    const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const offset = (page - 1) * limit;
+    
+    const [countResult]: any = await dbPool.query(`SELECT COUNT(*) as count FROM \`${safeTableName}\``);
+    const total = countResult[0]?.count || 0;
+    
+    const [rows]: any = await dbPool.query(`SELECT * FROM \`${safeTableName}\` LIMIT ? OFFSET ?`, [limit, offset]);
+    
+    console.log(`✅ [Admin API] Retrieved ${rows.length} rows from ${tableName} (total: ${total})`);
+    
+    res.json({
+      data: rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error: any) {
+    console.error('❌ [Admin API] Get table data error:', error);
+    if (error.code === 'ER_NO_SUCH_TABLE') {
+      res.status(404).json({ error: 'Table not found' });
+    } else {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+});
+
+router.post('/tables/:name/data', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  const tableName = req.params.name;
+  console.log(`📨 [Admin API] POST /admin/tables/${tableName}/data - Admin: ${req.admin?.username}`);
+  
+  try {
+    const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+    const { data } = req.body;
+    
+    if (!data || typeof data !== 'object') {
+      res.status(400).json({ error: 'Data object is required' });
+      return;
+    }
+    
+    const columns = Object.keys(data).map(k => `\`${k.replace(/[^a-zA-Z0-9_]/g, '')}\``);
+    const values = Object.values(data);
+    const placeholders = values.map(() => '?').join(', ');
+    
+    const query = `INSERT INTO \`${safeTableName}\` (${columns.join(', ')}) VALUES (${placeholders})`;
+    console.log(`📝 [Admin API] Inserting data into ${tableName}: ${columns.join(', ')}`);
+    
+    const [result]: any = await dbPool.query(query, values);
+    
+    console.log(`✅ [Admin API] Inserted row into ${tableName} (ID: ${result.insertId})`);
+    
+    res.json({ 
+      success: true, 
+      message: 'Data inserted successfully',
+      insertId: result.insertId 
+    });
+  } catch (error: any) {
+    console.error('❌ [Admin API] Insert data error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+router.post('/tables/create', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  console.log(`📨 [Admin API] POST /admin/tables/create - Admin: ${req.admin?.username}`);
+  
+  try {
+    const { tableName, columns } = req.body;
+    
+    if (!tableName || !columns || !Array.isArray(columns) || columns.length === 0) {
+      res.status(400).json({ error: 'Table name and columns array are required' });
+      return;
+    }
+    
+    const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+    
+    const columnDefs = columns.map((col: any) => {
+      const safeName = col.name.replace(/[^a-zA-Z0-9_]/g, '');
+      let def = `\`${safeName}\` ${col.type}`;
+      if (col.primary) def += ' PRIMARY KEY';
+      if (col.autoIncrement) def += ' AUTO_INCREMENT';
+      if (!col.nullable && !col.primary) def += ' NOT NULL';
+      if (col.default !== undefined && col.default !== '') def += ` DEFAULT '${col.default}'`;
+      return def;
+    });
+    
+    const query = `CREATE TABLE IF NOT EXISTS \`${safeTableName}\` (
+      ${columnDefs.join(',\n      ')}
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`;
+    
+    console.log(`📝 [Admin API] Creating table: ${safeTableName}`);
+    
+    await dbPool.query(query);
+    
+    console.log(`✅ [Admin API] Table ${safeTableName} created successfully`);
+    
+    res.json({ 
+      success: true, 
+      message: `Table ${safeTableName} created successfully` 
+    });
+  } catch (error: any) {
+    console.error('❌ [Admin API] Create table error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+router.post('/tables/:name/import-csv', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  const tableName = req.params.name;
+  console.log(`📨 [Admin API] POST /admin/tables/${tableName}/import-csv - Admin: ${req.admin?.username}`);
+  
+  try {
+    const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+    const { rows, columnMapping } = req.body;
+    
+    if (!rows || !Array.isArray(rows) || rows.length === 0) {
+      res.status(400).json({ error: 'Rows array is required' });
+      return;
+    }
+    
+    console.log(`📝 [Admin API] Importing ${rows.length} rows into ${tableName}`);
+    
+    let successCount = 0;
+    let errorCount = 0;
+    const errors: string[] = [];
+    
+    for (let i = 0; i < rows.length; i++) {
+      try {
+        const row = rows[i];
+        let data = row;
+        
+        if (columnMapping) {
+          data = {};
+          for (const [csvCol, dbCol] of Object.entries(columnMapping)) {
+            if (dbCol && row[csvCol] !== undefined) {
+              data[dbCol as string] = row[csvCol];
+            }
+          }
+        }
+        
+        const columns = Object.keys(data).map(k => `\`${k.replace(/[^a-zA-Z0-9_]/g, '')}\``);
+        const values = Object.values(data);
+        const placeholders = values.map(() => '?').join(', ');
+        
+        if (columns.length > 0) {
+          const query = `INSERT INTO \`${safeTableName}\` (${columns.join(', ')}) VALUES (${placeholders})`;
+          await dbPool.query(query, values);
+          successCount++;
+        }
+      } catch (err: any) {
+        errorCount++;
+        if (errors.length < 5) {
+          errors.push(`Row ${i + 1}: ${err.message}`);
+        }
+      }
+    }
+    
+    console.log(`✅ [Admin API] CSV import complete: ${successCount} success, ${errorCount} errors`);
+    
+    res.json({ 
+      success: true, 
+      message: `Imported ${successCount} rows successfully`,
+      successCount,
+      errorCount,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (error: any) {
+    console.error('❌ [Admin API] CSV import error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+router.delete('/tables/:name/data/:id', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  const tableName = req.params.name;
+  const id = req.params.id;
+  console.log(`📨 [Admin API] DELETE /admin/tables/${tableName}/data/${id} - Admin: ${req.admin?.username}`);
+  
+  try {
+    const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+    console.log(`🔍 [Admin API] Looking up primary key for table: ${safeTableName}`);
+    
+    const [columns]: any = await dbPool.query(`DESCRIBE \`${safeTableName}\``);
+    const primaryKeyColumn = columns.find((col: any) => col.Key === 'PRI');
+    
+    if (!primaryKeyColumn) {
+      console.log(`⚠️ [Admin API] No primary key found for table: ${safeTableName}`);
+      res.status(400).json({ error: 'Table has no primary key - cannot delete by ID' });
+      return;
+    }
+    
+    const primaryKey = primaryKeyColumn.Field;
+    console.log(`📝 [Admin API] Deleting from ${safeTableName} where ${primaryKey} = ${id}`);
+    
+    const [result]: any = await dbPool.query(
+      `DELETE FROM \`${safeTableName}\` WHERE \`${primaryKey}\` = ?`,
+      [id]
+    );
+    
+    if (result.affectedRows > 0) {
+      console.log(`✅ [Admin API] Successfully deleted row from ${safeTableName} where ${primaryKey}=${id}`);
+      res.json({ success: true, message: 'Row deleted successfully' });
+    } else {
+      console.log(`⚠️ [Admin API] Row not found in ${safeTableName} where ${primaryKey}=${id}`);
+      res.status(404).json({ error: 'Row not found' });
+    }
+  } catch (error: any) {
+    console.error('❌ [Admin API] Delete row error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
 export default router;
 
 export async function initializeAdminRoutes(): Promise<void> {
