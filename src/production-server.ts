@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import TelegramBot from 'node-telegram-bot-api';
 import { 
@@ -11,6 +12,9 @@ import {
 } from './bot/handlers';
 import { testConnections } from './bot/database';
 import { mountAdminRoutes, createDefaultAdmin } from './admin';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
