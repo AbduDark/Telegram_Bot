@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   X,
+  History,
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -20,6 +21,7 @@ const navItems = [
   { path: '/admin-panel/users', icon: Users, label: 'المستخدمون' },
   { path: '/admin-panel/subscriptions', icon: CreditCard, label: 'الاشتراكات' },
   { path: '/admin-panel/referrals', icon: Share2, label: 'الإحالات' },
+  { path: '/admin-panel/search-history', icon: History, label: 'سجل البحث' },
   { path: '/admin-panel/settings', icon: Settings, label: 'الإعدادات' },
 ];
 

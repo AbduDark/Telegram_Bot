@@ -9,6 +9,7 @@ import type {
   SubscriptionsResponse,
   ReferralStats,
   SettingsResponse,
+  SearchHistoryResponse,
 } from './types';
 
 export function useLogin() {
@@ -90,6 +91,18 @@ export function useSettings() {
     queryKey: ['settings'],
     queryFn: async (): Promise<SettingsResponse> => {
       const { data } = await apiClient.get<SettingsResponse>('/settings');
+      return data;
+    },
+  });
+}
+
+export function useSearchHistory(page: number = 1, limit: number = 50, type?: string) {
+  return useQuery({
+    queryKey: ['searchHistory', page, limit, type],
+    queryFn: async (): Promise<SearchHistoryResponse> => {
+      const { data } = await apiClient.get<SearchHistoryResponse>('/search-history', {
+        params: { page, limit, type },
+      });
       return data;
     },
   });
