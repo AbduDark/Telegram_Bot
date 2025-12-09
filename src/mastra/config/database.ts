@@ -27,13 +27,28 @@ export const TABLE_CONFIG = {
   VIP_TABLES: ['facebook_accounts', 'contacts'],
 } as const;
 
-// Single Database Configuration
+/**
+ * Get database configuration at runtime (lazy evaluation)
+ * This ensures environment variables are read at runtime, not bundle time
+ */
+export function getDbConfig(): DatabaseConfig {
+  const config: DatabaseConfig = {
+    host: process.env.VIP_DB_HOST || process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.VIP_DB_PORT || process.env.DB_PORT || '3306'),
+    database: process.env.VIP_DB_NAME || process.env.DB_NAME || 'telegram_bot',
+    user: process.env.VIP_DB_USER || process.env.DB_USER || 'bot_user',
+    password: process.env.VIP_DB_PASSWORD || process.env.DB_PASSWORD || '',
+  };
+  return config;
+}
+
+// Legacy export for backwards compatibility
 export const dbConfig: DatabaseConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '3306'),
-  database: process.env.DB_NAME || 'telegram_bot',
-  user: process.env.DB_USER || 'bot_user',
-  password: process.env.DB_PASSWORD || '',
+  host: process.env.VIP_DB_HOST || process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.VIP_DB_PORT || process.env.DB_PORT || '3306'),
+  database: process.env.VIP_DB_NAME || process.env.DB_NAME || 'telegram_bot',
+  user: process.env.VIP_DB_USER || process.env.DB_USER || 'bot_user',
+  password: process.env.VIP_DB_PASSWORD || process.env.DB_PASSWORD || '',
 };
 
 /**
@@ -55,8 +70,34 @@ export function createPool(config: DatabaseConfig) {
   });
 }
 
-// Single connection pool for all users
-export const dbPool = createPool(dbConfig);
+// Lazy pool instance - initialized on first access
+let _dbPool: ReturnType<typeof createPool> | null = null;
+
+/**
+ * Get database pool (lazy initialization)
+ * This ensures environment variables are read at runtime
+ */
+export function getDbPool() {
+  if (!_dbPool) {
+    const config = getDbConfig();
+    console.log('🔌 [Database] Initializing connection pool to:', {
+      host: config.host,
+      port: config.port,
+      database: config.database,
+      user: config.user,
+    });
+    _dbPool = createPool(config);
+  }
+  return _dbPool;
+}
+
+// Legacy export - uses lazy getter
+export const dbPool = {
+  query: (...args: Parameters<ReturnType<typeof createPool>['query']>) => getDbPool().query(...args),
+  execute: (...args: Parameters<ReturnType<typeof createPool>['execute']>) => getDbPool().execute(...args),
+  getConnection: () => getDbPool().getConnection(),
+  end: () => _dbPool?.end(),
+};
 
 /**
  * Check if a user is VIP with active subscription

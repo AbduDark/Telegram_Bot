@@ -11,6 +11,17 @@ import { z } from "zod";
 import { sharedPostgresStorage } from "./storage";
 import { inngest, inngestServe } from "./inngest";
 import { telegramBotAgent } from "./agents/telegramBotAgent";
+import {
+  handleAdminLogin,
+  handleAdminStats,
+  handleAdminUsers,
+  handleAdminTables,
+  handleAdminMe,
+  handleAdminSubscriptions,
+  handleAdminReferrals,
+  handleAdminSearchHistory,
+  initAdminDatabase
+} from "./admin-api";
 
 /**
  * Check if user is a member of the required channel
@@ -553,6 +564,47 @@ export const mastra = new Mastra({
           }
         },
       },
+      // Admin API Routes
+      {
+        path: "/admin/login",
+        method: "POST",
+        handler: handleAdminLogin,
+      },
+      {
+        path: "/admin/me",
+        method: "GET",
+        handler: handleAdminMe,
+      },
+      {
+        path: "/admin/stats",
+        method: "GET",
+        handler: handleAdminStats,
+      },
+      {
+        path: "/admin/users",
+        method: "GET",
+        handler: handleAdminUsers,
+      },
+      {
+        path: "/admin/tables",
+        method: "GET",
+        handler: handleAdminTables,
+      },
+      {
+        path: "/admin/subscriptions",
+        method: "GET",
+        handler: handleAdminSubscriptions,
+      },
+      {
+        path: "/admin/referrals",
+        method: "GET",
+        handler: handleAdminReferrals,
+      },
+      {
+        path: "/admin/search-history",
+        method: "GET",
+        handler: handleAdminSearchHistory,
+      },
       // This API route is used to register the Mastra workflow (inngest function) on the inngest server
       {
         path: "/api/inngest",
@@ -599,4 +651,8 @@ if (Object.keys(mastra.getAgents()).length > 1) {
 
 setupTelegramWebhook().catch((error) => {
   console.error('❌ [Webhook Setup] Unexpected error during webhook setup:', error);
+});
+
+initAdminDatabase().catch((error) => {
+  console.error('❌ [Admin DB] Unexpected error during admin database setup:', error);
 });
