@@ -93,7 +93,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use('/admin-panel', express.static(path.join(__dirname, '../admin-panel/dist')));
-app.get('/admin-panel/*', (req, res) => {
+app.get('/admin-panel/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, '../admin-panel/dist/index.html'));
 });
 
