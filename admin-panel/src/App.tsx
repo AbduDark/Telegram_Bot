@@ -8,6 +8,7 @@ import Subscriptions from './pages/Subscriptions'
 import Referrals from './pages/Referrals'
 import SearchHistory from './pages/SearchHistory'
 import Settings from './pages/Settings'
+import Database from './pages/Database'
 import Layout from './components/Layout'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -45,6 +46,7 @@ function App() {
             <Route path="subscriptions" element={<Subscriptions />} />
             <Route path="referrals" element={<Referrals />} />
             <Route path="search-history" element={<SearchHistory />} />
+            <Route path="database" element={<Database />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>

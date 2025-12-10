@@ -11,7 +11,8 @@ import {
   LogOut,
   Menu,
   X,
-  Crown
+  Crown,
+  Database
 } from 'lucide-react'
 
 const navItems = [
@@ -20,6 +21,7 @@ const navItems = [
   { path: '/subscriptions', icon: CreditCard, label: 'الاشتراكات' },
   { path: '/referrals', icon: Share2, label: 'الإحالات' },
   { path: '/search-history', icon: History, label: 'سجل البحث' },
+  { path: '/database', icon: Database, label: 'قاعدة البيانات' },
   { path: '/settings', icon: Settings, label: 'الإعدادات' },
 ]
 

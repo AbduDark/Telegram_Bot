@@ -749,6 +749,12 @@ router.post('/tables/create', verifyToken, async (req: AuthenticatedRequest, res
   console.log(`📨 [Admin API] POST /admin/tables/create - Admin: ${req.admin?.username}`);
   
   try {
+    if (req.admin?.role !== 'superadmin') {
+      console.log(`⚠️ [Admin API] Non-superadmin attempted to create table: ${req.admin?.username}`);
+      res.status(403).json({ error: 'Only superadmin can create tables' });
+      return;
+    }
+    
     const { tableName, columns } = req.body;
     
     if (!tableName || !columns || !Array.isArray(columns) || columns.length === 0) {
@@ -888,6 +894,363 @@ router.delete('/tables/:name/data/:id', verifyToken, async (req: AuthenticatedRe
     }
   } catch (error: any) {
     console.error('❌ [Admin API] Delete row error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+router.put('/tables/:name/data/:id', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  const tableName = req.params.name;
+  const id = req.params.id;
+  console.log(`📨 [Admin API] PUT /admin/tables/${tableName}/data/${id} - Admin: ${req.admin?.username}`);
+  
+  try {
+    const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+    const { data } = req.body;
+    
+    if (!data || typeof data !== 'object') {
+      res.status(400).json({ error: 'Data object is required' });
+      return;
+    }
+    
+    const [columns]: any = await dbPool.query(`DESCRIBE \`${safeTableName}\``);
+    const primaryKeyColumn = columns.find((col: any) => col.Key === 'PRI');
+    
+    if (!primaryKeyColumn) {
+      res.status(400).json({ error: 'Table has no primary key - cannot update by ID' });
+      return;
+    }
+    
+    const primaryKey = primaryKeyColumn.Field;
+    
+    const updates: string[] = [];
+    const values: any[] = [];
+    
+    for (const [key, value] of Object.entries(data)) {
+      const safeKey = key.replace(/[^a-zA-Z0-9_]/g, '');
+      if (safeKey !== primaryKey) {
+        updates.push(`\`${safeKey}\` = ?`);
+        values.push(value);
+      }
+    }
+    
+    if (updates.length === 0) {
+      res.status(400).json({ error: 'No valid fields to update' });
+      return;
+    }
+    
+    values.push(id);
+    
+    const query = `UPDATE \`${safeTableName}\` SET ${updates.join(', ')} WHERE \`${primaryKey}\` = ?`;
+    console.log(`📝 [Admin API] Updating row in ${tableName} where ${primaryKey} = ${id}`);
+    
+    const [result]: any = await dbPool.query(query, values);
+    
+    if (result.affectedRows > 0) {
+      console.log(`✅ [Admin API] Successfully updated row in ${safeTableName}`);
+      res.json({ success: true, message: 'Row updated successfully' });
+    } else {
+      res.status(404).json({ error: 'Row not found' });
+    }
+  } catch (error: any) {
+    console.error('❌ [Admin API] Update row error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+router.put('/tables/:name/rename', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  const tableName = req.params.name;
+  console.log(`📨 [Admin API] PUT /admin/tables/${tableName}/rename - Admin: ${req.admin?.username}`);
+  
+  try {
+    if (req.admin?.role !== 'superadmin') {
+      console.log(`⚠️ [Admin API] Non-superadmin attempted to rename table: ${req.admin?.username}`);
+      res.status(403).json({ error: 'Only superadmin can rename tables' });
+      return;
+    }
+    
+    const { newName } = req.body;
+    
+    if (!newName) {
+      res.status(400).json({ error: 'New table name is required' });
+      return;
+    }
+    
+    const safeOldName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+    const safeNewName = newName.replace(/[^a-zA-Z0-9_]/g, '');
+    
+    console.log(`📝 [Admin API] Renaming table ${safeOldName} to ${safeNewName}`);
+    
+    await dbPool.query(`RENAME TABLE \`${safeOldName}\` TO \`${safeNewName}\``);
+    
+    console.log(`✅ [Admin API] Table renamed: ${safeOldName} to ${safeNewName}`);
+    res.json({ success: true, message: `Table renamed to ${safeNewName}` });
+  } catch (error: any) {
+    console.error('❌ [Admin API] Rename table error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+router.delete('/tables/:name', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  const tableName = req.params.name;
+  console.log(`📨 [Admin API] DELETE /admin/tables/${tableName} - Admin: ${req.admin?.username}`);
+  
+  try {
+    if (req.admin?.role !== 'superadmin') {
+      console.log(`⚠️ [Admin API] Non-superadmin attempted to drop table: ${req.admin?.username}`);
+      res.status(403).json({ error: 'Only superadmin can drop tables' });
+      return;
+    }
+    
+    const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+    console.log(`📝 [Admin API] Dropping table: ${safeTableName}`);
+    
+    await dbPool.query(`DROP TABLE IF EXISTS \`${safeTableName}\``);
+    
+    console.log(`✅ [Admin API] Table dropped: ${safeTableName}`);
+    res.json({ success: true, message: `Table ${safeTableName} dropped successfully` });
+  } catch (error: any) {
+    console.error('❌ [Admin API] Drop table error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+router.post('/tables/:name/columns', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  const tableName = req.params.name;
+  console.log(`📨 [Admin API] POST /admin/tables/${tableName}/columns - Admin: ${req.admin?.username}`);
+  
+  try {
+    if (req.admin?.role !== 'superadmin') {
+      console.log(`⚠️ [Admin API] Non-superadmin attempted to add column: ${req.admin?.username}`);
+      res.status(403).json({ error: 'Only superadmin can add columns' });
+      return;
+    }
+    
+    const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+    const { name, type, nullable, defaultValue } = req.body;
+    
+    if (!name || !type) {
+      res.status(400).json({ error: 'Column name and type are required' });
+      return;
+    }
+    
+    const safeColumnName = name.replace(/[^a-zA-Z0-9_]/g, '');
+    
+    let sql = `ALTER TABLE \`${safeTableName}\` ADD COLUMN \`${safeColumnName}\` ${type}`;
+    if (nullable === false) sql += ' NOT NULL';
+    if (defaultValue !== undefined && defaultValue !== '') sql += ` DEFAULT '${defaultValue}'`;
+    
+    console.log(`📝 [Admin API] Adding column ${safeColumnName} to ${safeTableName}`);
+    
+    await dbPool.query(sql);
+    
+    console.log(`✅ [Admin API] Column added: ${safeColumnName}`);
+    res.json({ success: true, message: `Column ${safeColumnName} added successfully` });
+  } catch (error: any) {
+    console.error('❌ [Admin API] Add column error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+router.delete('/tables/:name/columns/:column', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  const tableName = req.params.name;
+  const columnName = req.params.column;
+  console.log(`📨 [Admin API] DELETE /admin/tables/${tableName}/columns/${columnName} - Admin: ${req.admin?.username}`);
+  
+  try {
+    if (req.admin?.role !== 'superadmin') {
+      console.log(`⚠️ [Admin API] Non-superadmin attempted to drop column: ${req.admin?.username}`);
+      res.status(403).json({ error: 'Only superadmin can drop columns' });
+      return;
+    }
+    
+    const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+    const safeColumnName = columnName.replace(/[^a-zA-Z0-9_]/g, '');
+    
+    console.log(`📝 [Admin API] Dropping column ${safeColumnName} from ${safeTableName}`);
+    
+    await dbPool.query(`ALTER TABLE \`${safeTableName}\` DROP COLUMN \`${safeColumnName}\``);
+    
+    console.log(`✅ [Admin API] Column dropped: ${safeColumnName}`);
+    res.json({ success: true, message: `Column ${safeColumnName} dropped successfully` });
+  } catch (error: any) {
+    console.error('❌ [Admin API] Drop column error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+router.put('/tables/:name/columns/:column', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  const tableName = req.params.name;
+  const columnName = req.params.column;
+  console.log(`📨 [Admin API] PUT /admin/tables/${tableName}/columns/${columnName} - Admin: ${req.admin?.username}`);
+  
+  try {
+    if (req.admin?.role !== 'superadmin') {
+      console.log(`⚠️ [Admin API] Non-superadmin attempted to modify column: ${req.admin?.username}`);
+      res.status(403).json({ error: 'Only superadmin can modify columns' });
+      return;
+    }
+    
+    const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+    const safeColumnName = columnName.replace(/[^a-zA-Z0-9_]/g, '');
+    const { newName, type, nullable, defaultValue } = req.body;
+    
+    if (!type) {
+      res.status(400).json({ error: 'Column type is required' });
+      return;
+    }
+    
+    let sql: string;
+    if (newName && newName !== columnName) {
+      const safeNewName = newName.replace(/[^a-zA-Z0-9_]/g, '');
+      sql = `ALTER TABLE \`${safeTableName}\` CHANGE \`${safeColumnName}\` \`${safeNewName}\` ${type}`;
+    } else {
+      sql = `ALTER TABLE \`${safeTableName}\` MODIFY COLUMN \`${safeColumnName}\` ${type}`;
+    }
+    
+    if (nullable === false) sql += ' NOT NULL';
+    if (defaultValue !== undefined && defaultValue !== '') sql += ` DEFAULT '${defaultValue}'`;
+    
+    console.log(`📝 [Admin API] Modifying column ${safeColumnName} in ${safeTableName}`);
+    
+    await dbPool.query(sql);
+    
+    console.log(`✅ [Admin API] Column modified: ${safeColumnName}`);
+    res.json({ success: true, message: 'Column modified successfully' });
+  } catch (error: any) {
+    console.error('❌ [Admin API] Modify column error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+router.post('/tables/:name/import-sql', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  const tableName = req.params.name;
+  console.log(`📨 [Admin API] POST /admin/tables/${tableName}/import-sql - Admin: ${req.admin?.username}`);
+  
+  try {
+    if (req.admin?.role !== 'superadmin') {
+      console.log(`⚠️ [Admin API] Non-superadmin attempted SQL import: ${req.admin?.username}`);
+      res.status(403).json({ error: 'Only superadmin can import SQL' });
+      return;
+    }
+    
+    const { sql } = req.body;
+    
+    if (!sql || typeof sql !== 'string') {
+      res.status(400).json({ error: 'SQL string is required' });
+      return;
+    }
+    
+    const dangerousPatterns = [
+      /DROP\s+DATABASE/i,
+      /DROP\s+SCHEMA/i,
+      /TRUNCATE\s+/i,
+      /DELETE\s+FROM\s+(?!.*WHERE)/i,
+      /ALTER\s+USER/i,
+      /CREATE\s+USER/i,
+      /GRANT\s+/i,
+      /REVOKE\s+/i
+    ];
+    
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(sql)) {
+        console.log(`⚠️ [Admin API] Blocked dangerous SQL pattern: ${pattern}`);
+        res.status(400).json({ error: 'This SQL operation is not allowed for security reasons' });
+        return;
+      }
+    }
+    
+    const statements = sql
+      .split(';')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    
+    if (statements.length > 100) {
+      res.status(400).json({ error: 'Maximum 100 SQL statements allowed per import' });
+      return;
+    }
+    
+    console.log(`📝 [Admin API] Executing ${statements.length} SQL statements`);
+    
+    const connection = await dbPool.getConnection();
+    let executed = 0;
+    const errors: string[] = [];
+    
+    try {
+      await connection.beginTransaction();
+      
+      for (let i = 0; i < statements.length; i++) {
+        try {
+          await connection.query(statements[i]);
+          executed++;
+        } catch (stmtError: any) {
+          errors.push(`Statement ${i + 1}: ${stmtError.message}`);
+        }
+      }
+      
+      await connection.commit();
+    } catch (txError) {
+      await connection.rollback();
+      throw txError;
+    } finally {
+      connection.release();
+    }
+    
+    console.log(`✅ [Admin API] SQL import complete: ${executed} success, ${errors.length} errors`);
+    
+    res.json({
+      success: true,
+      message: `Executed ${executed} statements`,
+      executed,
+      errorCount: errors.length,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (error: any) {
+    console.error('❌ [Admin API] SQL import error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+router.post('/execute-sql', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
+  console.log(`📨 [Admin API] POST /admin/execute-sql - Admin: ${req.admin?.username}`);
+  
+  try {
+    if (req.admin?.role !== 'superadmin') {
+      res.status(403).json({ error: 'Only superadmin can execute raw SQL' });
+      return;
+    }
+    
+    const { sql } = req.body;
+    
+    if (!sql || typeof sql !== 'string') {
+      res.status(400).json({ error: 'SQL string is required' });
+      return;
+    }
+    
+    const dangerousPatterns = [
+      /DROP\s+DATABASE/i,
+      /DROP\s+SCHEMA/i
+    ];
+    
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(sql)) {
+        res.status(400).json({ error: 'This SQL operation is not allowed' });
+        return;
+      }
+    }
+    
+    console.log(`📝 [Admin API] Executing SQL query`);
+    
+    const [result]: any = await dbPool.query(sql);
+    
+    if (Array.isArray(result)) {
+      console.log(`✅ [Admin API] Query returned ${result.length} rows`);
+      res.json({ success: true, rows: result, rowCount: result.length });
+    } else {
+      console.log(`✅ [Admin API] Query affected ${result.affectedRows} rows`);
+      res.json({ success: true, affectedRows: result.affectedRows || 0 });
+    }
+  } catch (error: any) {
+    console.error('❌ [Admin API] Execute SQL error:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
