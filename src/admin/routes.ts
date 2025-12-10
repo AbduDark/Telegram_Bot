@@ -210,11 +210,14 @@ router.get('/users', verifyToken, async (req: AuthenticatedRequest, res: Respons
     const total = countResult[0]?.count || 0;
 
     const [users]: any = await dbPool.query(
-      `SELECT telegram_user_id, username, subscription_type, subscription_start, 
-              subscription_end, is_active, free_searches_used, bonus_searches,
-              terms_accepted, created_at, updated_at
-       FROM user_subscriptions ${whereClause}
-       ORDER BY created_at DESC
+      `SELECT us.telegram_user_id, us.username, us.subscription_type, us.subscription_start, 
+              us.subscription_end, us.is_active, us.free_searches_used,
+              COALESCE(ur.bonus_searches, 0) as bonus_searches,
+              us.terms_accepted, us.created_at, us.updated_at
+       FROM user_subscriptions us
+       LEFT JOIN user_referrals ur ON us.telegram_user_id = ur.telegram_user_id
+       ${whereClause ? whereClause.replace(/username/g, 'us.username').replace(/telegram_user_id/g, 'us.telegram_user_id') : ''}
+       ORDER BY us.created_at DESC
        LIMIT ? OFFSET ?`,
       [...queryParams, limit, offset]
     );
@@ -242,11 +245,13 @@ router.get('/users/:id', verifyToken, async (req: AuthenticatedRequest, res: Res
   
   try {
     const [userResult]: any = await dbPool.query(
-      `SELECT telegram_user_id, username, subscription_type, subscription_start, 
-              subscription_end, is_active, free_searches_used, bonus_searches,
-              referral_code, referred_by, terms_accepted, created_at, updated_at
-       FROM user_subscriptions 
-       WHERE telegram_user_id = ?`,
+      `SELECT us.telegram_user_id, us.username, us.subscription_type, us.subscription_start, 
+              us.subscription_end, us.is_active, us.free_searches_used,
+              COALESCE(ur.bonus_searches, 0) as bonus_searches,
+              ur.referral_code, us.terms_accepted, us.created_at, us.updated_at
+       FROM user_subscriptions us
+       LEFT JOIN user_referrals ur ON us.telegram_user_id = ur.telegram_user_id
+       WHERE us.telegram_user_id = ?`,
       [userId]
     );
 
@@ -372,13 +377,36 @@ router.put('/users/:id/free-searches', verifyToken, async (req: AuthenticatedReq
       [count, userId]
     );
 
-    await dbPool.query(
-      `UPDATE user_referrals 
-       SET bonus_searches = bonus_searches + ?,
-           updated_at = NOW()
-       WHERE telegram_user_id = ?`,
-      [count, userId]
+    // Check if user has a referral record, if not create one
+    const [existingReferral]: any = await dbPool.query(
+      'SELECT telegram_user_id FROM user_referrals WHERE telegram_user_id = ?',
+      [userId]
     );
+
+    if (existingReferral && existingReferral.length > 0) {
+      await dbPool.query(
+        `UPDATE user_referrals 
+         SET bonus_searches = bonus_searches + ?,
+             updated_at = NOW()
+         WHERE telegram_user_id = ?`,
+        [count, userId]
+      );
+    } else {
+      // Get username from user_subscriptions
+      const [userInfo]: any = await dbPool.query(
+        'SELECT username FROM user_subscriptions WHERE telegram_user_id = ?',
+        [userId]
+      );
+      const username = userInfo[0]?.username || null;
+      
+      // Create a referral record with bonus searches
+      const referralCode = `REF${userId}${Date.now().toString(36).toUpperCase()}`;
+      await dbPool.query(
+        `INSERT INTO user_referrals (telegram_user_id, username, referral_code, bonus_searches) 
+         VALUES (?, ?, ?, ?)`,
+        [userId, username, referralCode, count]
+      );
+    }
 
     console.log(`✅ [Admin API] Added ${count} bonus searches for user ${userId}`);
 
