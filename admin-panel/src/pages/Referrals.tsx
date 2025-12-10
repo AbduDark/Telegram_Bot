@@ -1,136 +1,214 @@
-import { useReferrals } from '../api/hooks';
-import StatsCard from '../components/StatsCard';
-import { Users, Gift, Share2, TrendingUp } from 'lucide-react';
+import { useState, useEffect } from 'react'
+import api from '../services/api'
+import { 
+  Share2, 
+  Trophy, 
+  Gift, 
+  Users,
+  Copy,
+  Check
+} from 'lucide-react'
+
+interface TopReferrer {
+  telegram_user_id: number
+  username: string | null
+  referral_code: string
+  total_referrals: number
+  bonus_searches: number
+  created_at: string
+}
+
+interface RecentReferral {
+  referral_code: string
+  referrer_id: number
+  referred_user_id: number
+  referred_username: string | null
+  discount_used: boolean
+  subscription_granted: boolean
+  created_at: string
+}
+
+interface ReferralData {
+  totalReferrals: number
+  totalBonusSearches: number
+  topReferrers: TopReferrer[]
+  recentReferrals: RecentReferral[]
+}
 
 export default function Referrals() {
-  const { data, isLoading, error } = useReferrals();
+  const [data, setData] = useState<ReferralData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [copiedCode, setCopiedCode] = useState<string | null>(null)
 
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString('ar-SA');
-  };
+  useEffect(() => {
+    fetchReferrals()
+  }, [])
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
-        <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-        <p className="text-slate-400">جاري التحميل...</p>
-      </div>
-    );
+  const fetchReferrals = async () => {
+    setLoading(true)
+    try {
+      const response = await api.get('/admin/referrals')
+      setData(response.data)
+    } catch (error) {
+      console.error('Error fetching referrals:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  if (error) {
+  const copyCode = async (code: string) => {
+    await navigator.clipboard.writeText(code)
+    setCopiedCode(code)
+    setTimeout(() => setCopiedCode(null), 2000)
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('ar-EG', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-6 py-4 rounded-xl">
-          حدث خطأ في تحميل البيانات
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-gold-500 border-t-transparent"></div>
       </div>
-    );
+    )
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center">
-          <Share2 size={20} className="text-white" />
-        </div>
-        <h1 className="text-2xl font-bold text-white">إحصائيات الإحالات</h1>
+        <Share2 className="w-8 h-8 text-gold-500" />
+        <h1 className="text-3xl font-bold text-white">نظام الإحالات</h1>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <StatsCard
-          title="إجمالي الإحالات"
-          value={data?.totalReferrals || 0}
-          icon={Users}
-          color="#3b82f6"
-        />
-        <StatsCard
-          title="عمليات البحث المكافأة"
-          value={data?.totalBonusSearches || 0}
-          icon={Gift}
-          color="#10b981"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="card-dark p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-400 text-sm mb-1">إجمالي الإحالات</p>
+              <p className="text-3xl font-bold text-white">{data?.totalReferrals || 0}</p>
+            </div>
+            <div className="p-4 rounded-xl bg-blue-900/20">
+              <Users className="w-8 h-8 text-blue-400" />
+            </div>
+          </div>
+        </div>
+
+        <div className="card-dark p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-400 text-sm mb-1">إجمالي البحث المكافأ</p>
+              <p className="text-3xl font-bold text-gold-500">{data?.totalBonusSearches || 0}</p>
+            </div>
+            <div className="p-4 rounded-xl bg-gold-500/20">
+              <Gift className="w-8 h-8 text-gold-500" />
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top Referrers */}
-        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl overflow-hidden">
-          <div className="flex items-center gap-3 p-6 border-b border-slate-700/50">
-            <TrendingUp size={20} className="text-amber-400" />
-            <h3 className="text-lg font-semibold text-white">أفضل المُحيلين</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-700/30">
-                  <th className="text-right text-xs font-medium text-slate-500 px-6 py-3">#</th>
-                  <th className="text-right text-xs font-medium text-slate-500 px-6 py-3">اسم المستخدم</th>
-                  <th className="text-right text-xs font-medium text-slate-500 px-6 py-3">كود الإحالة</th>
-                  <th className="text-right text-xs font-medium text-slate-500 px-6 py-3">عدد الإحالات</th>
-                  <th className="text-right text-xs font-medium text-slate-500 px-6 py-3">المكافآت</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data?.topReferrers?.map((referrer, index) => (
-                  <tr key={referrer.telegram_user_id} className="border-b border-slate-700/20 hover:bg-slate-700/20 transition-colors">
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
-                        index === 0 ? 'bg-amber-500/20 text-amber-400' :
-                        index === 1 ? 'bg-slate-400/20 text-slate-300' :
-                        index === 2 ? 'bg-orange-500/20 text-orange-400' :
-                        'bg-slate-700/50 text-slate-400'
-                      }`}>
-                        {index + 1}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-white">{referrer.username || referrer.telegram_user_id}</td>
-                    <td className="px-6 py-4">
-                      <code className="bg-slate-700/50 text-blue-400 px-2 py-1 rounded text-sm font-mono">{referrer.referral_code}</code>
-                    </td>
-                    <td className="px-6 py-4 text-slate-300">{referrer.total_referrals}</td>
-                    <td className="px-6 py-4 text-emerald-400">{referrer.bonus_searches} عمليات بحث</td>
-                  </tr>
-                ))}
-                {(!data?.topReferrers || data.topReferrers.length === 0) && (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
-                      لا توجد إحالات بعد
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+        <div className="card-dark p-6">
+          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <Trophy className="w-6 h-6 text-gold-500" />
+            أفضل المحيلين
+          </h2>
+          
+          {data?.topReferrers && data.topReferrers.length > 0 ? (
+            <div className="space-y-3">
+              {data.topReferrers.map((referrer, index) => (
+                <div 
+                  key={referrer.telegram_user_id}
+                  className="flex items-center justify-between p-4 bg-dark-300 rounded-lg"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                      index === 0 ? 'bg-gold-500 text-black' :
+                      index === 1 ? 'bg-gray-400 text-black' :
+                      index === 2 ? 'bg-orange-700 text-white' :
+                      'bg-dark-200 text-gray-400'
+                    }`}>
+                      {index + 1}
+                    </div>
+                    <div>
+                      <p className="font-medium text-white">@{referrer.username || 'غير معروف'}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500 font-mono text-sm">{referrer.referral_code}</span>
+                        <button 
+                          onClick={() => copyCode(referrer.referral_code)}
+                          className="p-1 hover:bg-dark-200 rounded"
+                        >
+                          {copiedCode === referrer.referral_code ? (
+                            <Check className="w-4 h-4 text-green-500" />
+                          ) : (
+                            <Copy className="w-4 h-4 text-gray-500" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-left">
+                    <p className="text-2xl font-bold text-gold-500">{referrer.total_referrals}</p>
+                    <p className="text-gray-500 text-sm">إحالة</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-gray-500 py-8">لا يوجد محيلين بعد</p>
+          )}
         </div>
 
-        {/* Recent Referrals */}
-        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl overflow-hidden">
-          <div className="flex items-center gap-3 p-6 border-b border-slate-700/50">
-            <Share2 size={20} className="text-blue-400" />
-            <h3 className="text-lg font-semibold text-white">آخر الإحالات</h3>
-          </div>
-          <div className="p-4 space-y-3">
-            {data?.recentReferrals?.slice(0, 10).map((ref, index) => (
-              <div key={index} className="flex items-center justify-between bg-slate-700/30 rounded-xl px-4 py-3 hover:bg-slate-700/50 transition-colors">
-                <div className="flex flex-col gap-1">
-                  <span className="text-white font-medium">
-                    {ref.referred_username || ref.referred_user_id}
-                  </span>
-                  <span className="text-xs text-slate-500">
-                    باستخدام كود: <code className="text-blue-400">{ref.referral_code}</code>
-                  </span>
+        <div className="card-dark p-6">
+          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <Share2 className="w-6 h-6 text-gold-500" />
+            آخر الإحالات
+          </h2>
+          
+          {data?.recentReferrals && data.recentReferrals.length > 0 ? (
+            <div className="space-y-3 max-h-96 overflow-auto">
+              {data.recentReferrals.map((ref, index) => (
+                <div 
+                  key={index}
+                  className="p-4 bg-dark-300 rounded-lg"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-medium text-white">@{ref.referred_username || 'غير معروف'}</span>
+                    <span className="text-gray-500 text-sm">{formatDate(ref.created_at)}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="px-2 py-1 bg-dark-200 text-gold-500 rounded text-xs font-mono">
+                      {ref.referral_code}
+                    </span>
+                    {ref.discount_used ? (
+                      <span className="px-2 py-1 bg-green-900/30 text-green-500 rounded text-xs">
+                        الخصم مستخدم
+                      </span>
+                    ) : (
+                      <span className="px-2 py-1 bg-orange-900/30 text-orange-500 rounded text-xs">
+                        خصم معلق
+                      </span>
+                    )}
+                    {ref.subscription_granted && (
+                      <span className="px-2 py-1 bg-blue-900/30 text-blue-400 rounded text-xs">
+                        اشترك
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <span className="text-xs text-slate-500">{formatDate(ref.created_at)}</span>
-              </div>
-            ))}
-            {(!data?.recentReferrals || data.recentReferrals.length === 0) && (
-              <div className="text-center text-slate-500 py-8">لا توجد إحالات حديثة</div>
-            )}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-gray-500 py-8">لا توجد إحالات بعد</p>
+          )}
         </div>
       </div>
     </div>
-  );
+  )
 }

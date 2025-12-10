@@ -1,112 +1,56 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import Layout from './components/Layout';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Users from './pages/Users';
-import Subscriptions from './pages/Subscriptions';
-import Referrals from './pages/Referrals';
-import Settings from './pages/Settings';
-import SearchHistory from './pages/SearchHistory';
-import DataManagement from './pages/DataManagement';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 30000,
-    },
-  },
-});
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
+import Login from './pages/Login'
+import Dashboard from './pages/Dashboard'
+import Users from './pages/Users'
+import UserDetails from './pages/UserDetails'
+import Subscriptions from './pages/Subscriptions'
+import Referrals from './pages/Referrals'
+import SearchHistory from './pages/SearchHistory'
+import Settings from './pages/Settings'
+import Layout from './components/Layout'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const token = localStorage.getItem('admin_token');
-  if (!token) {
-    return <Navigate to="/login" replace />;
+  const { isAuthenticated, loading } = useAuth()
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-gold-500 border-t-transparent"></div>
+      </div>
+    )
   }
-  return <Layout>{children}</Layout>;
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+  
+  return <>{children}</>
 }
 
-function PublicRoute({ children }: { children: React.ReactNode }) {
-  const token = localStorage.getItem('admin_token');
-  if (token) {
-    return <Navigate to="/" replace />;
-  }
-  return <>{children}</>;
-}
-
-export default function App() {
+function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+    <AuthProvider>
+      <Router>
         <Routes>
-          <Route
-            path="/login"
-            element={
-              <PublicRoute>
-                <Login />
-              </PublicRoute>
-            }
-          />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/users"
-            element={
-              <ProtectedRoute>
-                <Users />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/subscriptions"
-            element={
-              <ProtectedRoute>
-                <Subscriptions />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/referrals"
-            element={
-              <ProtectedRoute>
-                <Referrals />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <Settings />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/search-history"
-            element={
-              <ProtectedRoute>
-                <SearchHistory />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/data"
-            element={
-              <ProtectedRoute>
-                <DataManagement />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/" element={
+            <ProtectedRoute>
+              <Layout />
+            </ProtectedRoute>
+          }>
+            <Route index element={<Dashboard />} />
+            <Route path="users" element={<Users />} />
+            <Route path="users/:id" element={<UserDetails />} />
+            <Route path="subscriptions" element={<Subscriptions />} />
+            <Route path="referrals" element={<Referrals />} />
+            <Route path="search-history" element={<SearchHistory />} />
+            <Route path="settings" element={<Settings />} />
+          </Route>
         </Routes>
-      </BrowserRouter>
-    </QueryClientProvider>
-  );
+      </Router>
+    </AuthProvider>
+  )
 }
+
+export default App
