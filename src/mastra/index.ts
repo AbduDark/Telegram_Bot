@@ -20,6 +20,15 @@ import {
   handleAdminSubscriptions,
   handleAdminReferrals,
   handleAdminSearchHistory,
+  handleUserDetails,
+  handleUpdateSubscription,
+  handleAddFreeSearches,
+  handleTableStructure,
+  handleTableData,
+  handleInsertData,
+  handleCreateTable,
+  handleImportCSV,
+  handleDeleteRow,
   initAdminDatabase
 } from "./admin-api";
 
@@ -604,6 +613,51 @@ export const mastra = new Mastra({
         path: "/admin/search-history",
         method: "GET",
         handler: handleAdminSearchHistory,
+      },
+      {
+        path: "/admin/users/:id",
+        method: "GET",
+        handler: handleUserDetails,
+      },
+      {
+        path: "/admin/users/:id/subscription",
+        method: "PUT",
+        handler: handleUpdateSubscription,
+      },
+      {
+        path: "/admin/users/:id/free-searches",
+        method: "PUT",
+        handler: handleAddFreeSearches,
+      },
+      {
+        path: "/admin/tables/create",
+        method: "POST",
+        handler: handleCreateTable,
+      },
+      {
+        path: "/admin/tables/:name/structure",
+        method: "GET",
+        handler: handleTableStructure,
+      },
+      {
+        path: "/admin/tables/:name/data",
+        method: "GET",
+        handler: handleTableData,
+      },
+      {
+        path: "/admin/tables/:name/data",
+        method: "POST",
+        handler: handleInsertData,
+      },
+      {
+        path: "/admin/tables/:name/import-csv",
+        method: "POST",
+        handler: handleImportCSV,
+      },
+      {
+        path: "/admin/tables/:name/data/:id",
+        method: "DELETE",
+        handler: handleDeleteRow,
       },
       // This API route is used to register the Mastra workflow (inngest function) on the inngest server
       {
