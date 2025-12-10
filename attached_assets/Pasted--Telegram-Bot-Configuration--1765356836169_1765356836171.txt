@@ -1,0 +1,105 @@
+# ========================================
+# Telegram Bot Configuration
+# ========================================
+
+# 1. Bot Token (مطلوب)
+# احصل عليه من @BotFather في تيليجرام
+TELEGRAM_BOT_TOKEN=8578179190:AAElGTGLXB1JyB9U4tZPWMdqNPjEvOUH7Mc
+
+# 2. Webhook URL (اختياري - له الأولوية)
+# استخدم دومين السيرفر أو IP العام للسيرفر
+# ملاحظة: يتم إعداد الـ webhook تلقائياً عند بدء السيرفر
+# 
+# أمثلة حسب وضع التشغيل:
+# 
+# Production Mode (npm start):
+#   - مع دومين: https://yourdomain.com/webhook
+#   - مع IP: https://123.456.789.10/webhook
+#   TELEGRAM_WEBHOOK_URL=https://your-domain.com/webhook
+#
+# Development Mode (npm run dev) - Mastra:
+#   - مع دومين: https://yourdomain.com/api/webhooks/telegram/action
+#   - مع IP: https://123.456.789.10/api/webhooks/telegram/action
+#   TELEGRAM_WEBHOOK_URL=https://your-domain.com/api/webhooks/telegram/action
+#
+# على Replit:
+#   - سيتم استخدام REPLIT_DEV_DOMAIN تلقائياً إذا لم يتم تعيين TELEGRAM_WEBHOOK_URL
+#   - لا حاجة لتعيين TELEGRAM_WEBHOOK_URL يدوياً
+TELEGRAM_WEBHOOK_URL=https://192.99.144.235.nip.io/webhook
+
+# إذا كنت على Replit، لا تحتاج لتعيين TELEGRAM_WEBHOOK_URL
+# سيتم استخدام REPLIT_DEV_DOMAIN تلقائياً
+
+# ========================================
+# Database Configuration (Unified Database)
+# ========================================
+# All data (subscriptions, Facebook accounts, contacts) in ONE database
+# This simplifies deployment and management in production
+
+VIP_DB_HOST=localhost
+VIP_DB_PORT=3306
+VIP_DB_NAME=mo_sam
+VIP_DB_USER=dark
+VIP_DB_PASSWORD=@@@@Moh@med162203aA@!2
+VIP_DATABASE_URL=mysql://dark:@@@@Moh@med162203aA@!2@localhost:3306/mo_sam
+
+# Note: FACEBOOK_DB_* and CONTACTS_DB_* are NOT needed in production mode
+# The system uses a single unified database with these tables:
+#   - user_subscriptions (for VIP and Regular subscriptions)
+#   - facebook_accounts (Facebook data)
+#   - contacts (Contact information)
+
+# ========================================
+# AI API Keys (اختياري)
+# ========================================
+OPENAI_API_KEY=your_openai_api_key_here
+GROQ_API_KEY=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
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+
+# ========================================
+# Inngest Configuration (للـ Workflows)
+# ========================================
+INNGEST_EVENT_KEY=8Uw8beun4kMaw8cux2DGQ8phh82w1-kp9lNoa16BWwdQvHuH_BaK1DLlbWHV9xt3og5P3gbYXl4JIWbqc2G9lg
+INNGEST_SIGNING_KEY=signkey-prod-965a233115e5904dcfac2c101cb6914f67cc71a92cd1f1b479f1919eb083ff83
+
+# ========================================
+# Server Configuration
+# ========================================
+PORT=5000
+HOST=0.0.0.0
+
+# BOT_URL: الرابط العام للبوت (اختياري - للمعلومات فقط)
+# استخدم دومين السيرفر أو IP السيرفر
+# أمثلة:
+# - https://yourdomain.com
+# - https://123.456.789.10
+# - https://your-app.replit.dev
+BOT_URL=https://yourdomain.com
+
+# ========================================
+# Environment Mode
+# ========================================
+# development = Mastra playground + dev tools (للتطوير فقط)
+# production = Telegram webhook server only (بدون Mastra UI - للإنتاج)
+NODE_ENV=production
+
+# ========================================
+# Logging
+# ========================================
+LOG_LEVEL=info
+
+# ========================================
+# Mastra Configuration (Development only)
+# ========================================
+DATABASE_URL=${VIP_DATABASE_URL}
+REQUIRED_CHANNEL_ID=-1003299621823
+TELEGRAM_REQUIRED_CHANNEL_ID=-1003299621823
+
+JWT_SECRET=eP+557os0dVLhb2HVsAGeZSjZ7SQLV6uJ5dB5owJhSuv9SRJXwAWtYhJg6tN9Q82adVcfUV7B6exGx3iXscJkg==
+JWT_REFRESH_SECRET=jt0N9SwHcCYjBNLPMAZ7sKfnz6uF5JUP6sEcFKp2B8OVdmKTsEOYgnglIP3ckwTolGKOFS5RLm9wUigpC4TD6Q==
+
+ADMIN_USERNAME=SemSem
+ADMIN_PASSWORD=jt0N9SwHcCYjBNLPMAZ7sKfnz6uF5JUP6sEcFKp2B8OVdmKTsEOYgnglIP3ckwTolGKOFS5RLm9wUigpC4TD6Q
+
+APP_URL=https://dsh.192.99.144.235
+NODE_ENV=production

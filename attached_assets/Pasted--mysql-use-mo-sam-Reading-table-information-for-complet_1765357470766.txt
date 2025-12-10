@@ -1,0 +1,165 @@
+
+mysql> use mo_sam;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Database changed
+mysql> show tables;
++--------------------+
+| Tables_in_mo_sam   |
++--------------------+
+| admin_users        |
+| bot_settings       |
+| contacts           |
+| facebook_accounts  |
+| payment_records    |
+| referral_uses      |
+| search_history     |
+| user_referrals     |
+| user_subscriptions |
++--------------------+
+9 rows in set (0.00 sec)
+
+mysql> describe admin_users;
++---------------+----------------------------+------+-----+-------------------+-------------------+
+| Field         | Type                       | Null | Key | Default           | Extra             |
++---------------+----------------------------+------+-----+-------------------+-------------------+
+| id            | int                        | NO   | PRI | NULL              | auto_increment    |
+| username      | varchar(255)               | NO   | UNI | NULL              |                   |
+| password_hash | varchar(255)               | NO   |     | NULL              |                   |
+| role          | enum('admin','superadmin') | YES  |     | admin             |                   |
+| created_at    | timestamp                  | YES  |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
+| last_login    | timestamp                  | YES  |     | NULL              |                   |
++---------------+----------------------------+------+-----+-------------------+-------------------+
+6 rows in set (0.00 sec)
+
+mysql> describe bot_settings;
++------------+--------------+------+-----+-------------------+-----------------------------------------------+
+| Field      | Type         | Null | Key | Default           | Extra                                         |
++------------+--------------+------+-----+-------------------+-----------------------------------------------+
+| key        | varchar(255) | NO   | PRI | NULL              |                                               |
+| value      | text         | YES  |     | NULL              |                                               |
+| updated_at | timestamp    | YES  |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED on update CURRENT_TIMESTAMP |
+| updated_by | int          | YES  | MUL | NULL              |                                               |
++------------+--------------+------+-----+-------------------+-----------------------------------------------+
+4 rows in set (0.00 sec)
+
+mysql> describe facebook_accounts;
++--------------+--------------+------+-----+---------+-------+
+| Field        | Type         | Null | Key | Default | Extra |
++--------------+--------------+------+-----+---------+-------+
+| id           | varchar(10)  | YES  |     | NULL    |       |
+| facebook_id  | varchar(255) | YES  | MUL | NULL    |       |
+| phone        | varchar(255) | YES  | MUL | NULL    |       |
+| name         | varchar(255) | YES  | MUL | NULL    |       |
+| facebook_url | varchar(255) | YES  |     | NULL    |       |
+| email        | varchar(255) | YES  | MUL | NULL    |       |
+| account_name | varchar(255) | YES  |     | NULL    |       |
+| location     | varchar(255) | YES  | MUL | NULL    |       |
+| job          | varchar(255) | YES  |     | NULL    |       |
+| gender       | varchar(255) | YES  |     | NULL    |       |
++--------------+--------------+------+-----+---------+-------+
+10 rows in set (0.00 sec)
+
+mysql> describe contacts;
++---------+--------------+------+-----+---------+-------+
+| Field   | Type         | Null | Key | Default | Extra |
++---------+--------------+------+-----+---------+-------+
+| id      | varchar(2)   | YES  |     | NULL    |       |
+| name    | varchar(97)  | YES  | MUL | NULL    |       |
+| address | varchar(255) | YES  |     | NULL    |       |
+| phone   | varchar(62)  | YES  | MUL | NULL    |       |
+| phone2  | varchar(13)  | YES  | MUL | NULL    |       |
+| COL 6   | varchar(10)  | YES  |     | NULL    |       |
++---------+--------------+------+-----+---------+-------+
+6 rows in set (0.01 sec)
+
+mysql> describe payment records;
+ERROR 1146 (42S02): Table 'mo_sam.payment' doesn't exist
+mysql> describe paymentrecords;
+ERROR 1146 (42S02): Table 'mo_sam.paymentrecords' doesn't exist
+mysql> describe payment_records;
++----------------------------+-----------------------+------+-----+-------------------+-------------------+
+| Field                      | Type                  | Null | Key | Default           | Extra             |
++----------------------------+-----------------------+------+-----+-------------------+-------------------+
+| id                         | int                   | NO   | PRI | NULL              | auto_increment    |
+| telegram_user_id           | bigint                | YES  |     | NULL              |                   |
+| username                   | varchar(255)          | YES  |     | NULL              |                   |
+| telegram_payment_charge_id | varchar(255)          | YES  |     | NULL              |                   |
+| subscription_type          | enum('vip','regular') | YES  |     | NULL              |                   |
+| stars_amount               | int                   | YES  |     | NULL              |                   |
+| payment_date               | datetime              | YES  |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
++----------------------------+-----------------------+------+-----+-------------------+-------------------+
+7 rows in set (0.00 sec)
+
+mysql> describe referral_uses;
++----------------------+--------------+------+-----+-------------------+-------------------+
+| Field                | Type         | Null | Key | Default           | Extra             |
++----------------------+--------------+------+-----+-------------------+-------------------+
+| id                   | int          | NO   | PRI | NULL              | auto_increment    |
+| referral_code        | varchar(50)  | NO   | MUL | NULL              |                   |
+| referrer_id          | bigint       | NO   | MUL | NULL              |                   |
+| referred_user_id     | bigint       | NO   | UNI | NULL              |                   |
+| referred_username    | varchar(255) | YES  |     | NULL              |                   |
+| discount_used        | tinyint(1)   | YES  |     | 0                 |                   |
+| subscription_granted | tinyint(1)   | YES  |     | 0                 |                   |
+| created_at           | datetime     | YES  |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
++----------------------+--------------+------+-----+-------------------+-------------------+
+8 rows in set (0.01 sec)
+
+mysql> describe search_history;
++------------------+-----------------------------+------+-----+-------------------+-------------------+
+| Field            | Type                        | Null | Key | Default           | Extra             |
++------------------+-----------------------------+------+-----+-------------------+-------------------+
+| id               | int                         | NO   | PRI | NULL              | auto_increment    |
+| telegram_user_id | bigint                      | NO   | MUL | NULL              |                   |
+| search_query     | varchar(100)                | YES  |     | NULL              |                   |
+| search_type      | enum('phone','facebook_id') | NO   |     | NULL              |                   |
+| results_count    | int                         | YES  |     | 0                 |                   |
+| created_at       | timestamp                   | YES  | MUL | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
++------------------+-----------------------------+------+-----+-------------------+-------------------+
+6 rows in set (0.00 sec)
+
+mysql> describe user_referral;
+ERROR 1146 (42S02): Table 'mo_sam.user_referral' doesn't exist
+mysql> describe user_referrals;
++----------------------+--------------+------+-----+-------------------+-----------------------------------------------+
+| Field                | Type         | Null | Key | Default           | Extra                                         |
++----------------------+--------------+------+-----+-------------------+-----------------------------------------------+
+| id                   | int          | NO   | PRI | NULL              | auto_increment                                |
+| telegram_user_id     | bigint       | NO   | UNI | NULL              |                                               |
+| username             | varchar(255) | YES  |     | NULL              |                                               |
+| referral_code        | varchar(50)  | NO   | UNI | NULL              |                                               |
+| total_referrals      | int          | YES  |     | 0                 |                                               |
+| successful_referrals | int          | YES  |     | 0                 |                                               |
+| bonus_searches       | int          | YES  |     | 0                 |                                               |
+| created_at           | datetime     | YES  |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED                             |
+| updated_at           | datetime     | YES  |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED on update CURRENT_TIMESTAMP |
++----------------------+--------------+------+-----+-------------------+-----------------------------------------------+
+9 rows in set (0.01 sec)
+
+mysql> describe user_subscribtions
+    -> ;
+ERROR 1146 (42S02): Table 'mo_sam.user_subscribtions' doesn't exist
+mysql> describe user_subscriptions;
++----------------------+------------------------------+------+-----+-------------------+-----------------------------------------------+
+| Field                | Type                         | Null | Key | Default           | Extra                                         |
++----------------------+------------------------------+------+-----+-------------------+-----------------------------------------------+
+| id                   | int                          | NO   | PRI | NULL              | auto_increment                                |
+| telegram_user_id     | bigint                       | NO   | UNI | NULL              |                                               |
+| username             | varchar(255)                 | YES  |     | NULL              |                                               |
+| subscription_type    | enum('regular','vip','free') | NO   | MUL | free              |                                               |
+| subscription_start   | datetime                     | YES  |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED                             |
+| subscription_end     | datetime                     | YES  |     | NULL              |                                               |
+| is_active            | tinyint(1)                   | YES  | MUL | 1                 |                                               |
+| free_searches_used   | int                          | YES  |     | 0                 |                                               |
+| notification_sent_at | datetime                     | YES  |     | NULL              |                                               |
+| created_at           | datetime                     | YES  |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED                             |
+| updated_at           | datetime                     | YES  |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED on update CURRENT_TIMESTAMP |
+| terms_accepted       | tinyint(1)                   | YES  |     | 0                 |                                               |
+| terms_version        | varchar(10)                  | YES  |     | NULL              |                                               |
+| terms_accepted_at    | datetime                     | YES  |     | NULL              |                                               |
++----------------------+------------------------------+------+-----+-------------------+-----------------------------------------------+
+14 rows in set (0.00 sec)
+
+mysql>
